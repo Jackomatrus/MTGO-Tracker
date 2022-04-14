@@ -376,7 +376,7 @@ def update_game_wins(ad,timeout):
                     i[mw_index] = "P2"
                 elif i[p2_index] == timeout[i[0]]:
                     i[mw_index] = "P1"
-def players(init):
+def players(init: str) -> list[str]:
     # Input:  String or List[Strings]
     # Output: List[Strings]
 
@@ -386,19 +386,27 @@ def players(init):
     players = []
     
     # Initialize list of players in the game
-    for i in init:
-        if i.find(" joined the game") != -1:
-            player = i.split(" joined the game")[0]
-            players.append(player)
+    JOIN_MSG = " joined the game"
+    players = [i.split(JOIN_MSG)[0] for i in init if JOIN_MSG in i]
 
     # Filter duplicates from player list
     players = list(set(players))
-    players.sort()
     players.sort(key=len, reverse=True)
 
     return players
-def alter(player_name,original):
-    if original == True:
+
+def alter(player_name: str, original: bool) -> str:
+    """If original: replaces + -> " " and * -> .
+    Otherwise reverses these operations.
+
+    Args:
+        player_name (str): The player name
+        original (bool): _description_
+
+    Returns:
+        str: Replaced string
+    """
+    if original:
         player = player_name.replace("+"," ")
         player = player.replace("*",".")
     else:
@@ -582,7 +590,7 @@ def check_timeout(ga):
         if i.find(" has lost the game due to disconnection") != -1:
             return (True,i.split(" has lost the game due to disconnection")[0])
     return (False,None)
-def game_actions(init,time):
+def game_actions(init: str, time: str) -> list[str]:
     # Input:  String,String
     # Output: List[Strings]
 
@@ -757,9 +765,15 @@ def game_data(ga):
         return mull_dict[cards]
     
     def get_winner(curr_game_list,p1,p2):
-        # Look for a concession string.
-        for index,i in enumerate(curr_game_list):
-            if i.find("has conceded") != -1:
+        for i in curr_game_list:
+            # concession
+            if "has conceded" in i:
+                if i.split()[0] == p1:
+                    return "P2"
+                elif i.split()[0] == p2:
+                    return "P1"
+            # run out of time
+            elif i.find("has run out of time and has lost the match") in i:
                 if i.split()[0] == p1:
                     return "P2"
                 elif i.split()[0] == p2:
@@ -776,6 +790,12 @@ def game_data(ga):
                 return "P1"
         # Add more win conditions here.
         if lastline.find("triggered ability from [Thassa's Oracle]") != -1:
+            if lastline.split()[0] == p1:
+                return "P1"
+            elif lastline.split()[0] == p2:
+                return "P2"
+        # Approach
+        if 'casts [Approach of the Second Sun]' in lastline:
             if lastline.split()[0] == p1:
                 return "P1"
             elif lastline.split()[0] == p2:
@@ -1141,7 +1161,7 @@ def play_data(ga):
                               alter(NON_ACTIVE_PLAYER,original=True)))
             ALL_PLAYS.append(PLAY_DATA)
     return ALL_PLAYS
-def get_all_data(init,mtime):
+def get_all_data(init: str, mtime: str):
     # Input:  String,String
     # Output: List[Matches,Games,Plays]
     
