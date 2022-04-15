@@ -1,6 +1,7 @@
 # MODO GameLog Cleaning Module
 import copy
 from typing import Literal, Union
+import re
 
 # To add a column to a database:
 # Add the column to modo.header() function.
@@ -635,21 +636,18 @@ def game_actions(init: str, time: str) -> list[str]:
     initial =       init
     gameactions =   []
     p =             players(init)
-    count =         0
     lost_conn =     False
 
     for i in p:
         initial = initial.replace(i,alter(i,original=False))
-    initial = initial.split("@P")
-
+    # skip all text up to first @P
+    initial = initial.split("@P")[1:]
     gameactions.append(format_time(time))
     for i in initial:
         fullstring = i.replace(" (Alt.)", "")
         fullstring = fullstring.split(".")[0]
         # Player joined game header.
-        if count == 0:
-            count += 1
-        elif i.find(" has lost connection to the game") != -1:
+        if i.find(" has lost connection to the game") != -1:
             lost_conn = True
         elif i.find(" joined the game.") != -1:
             if lost_conn:
@@ -657,10 +655,10 @@ def game_actions(init: str, time: str) -> list[str]:
             else:
                 gameactions.append(fullstring)
         # Skip looking at extra cards.
-        elif i.find(" draws their next card.") != -1:
+        elif " draws their next card." in i:
             continue
         # Skip leaving to sideboard.
-        elif i.find(" has left the game.") != -1:
+        elif " has left the game." in i:
             continue
         # New turn header.
         elif i.find("Turn ") != -1 and i.find(": ") != -1:
@@ -788,46 +786,47 @@ def match_data(ga,gd,pd):
                        DATE))
     return MATCH_DATA
 
-def get_winner(curr_game_list,p1,p2):
-        for i in curr_game_list:
+def get_winner(curr_game_list: list[str], p1: str, p2: str
+    ) -> Union[Literal["NA"], Literal["P1"], Literal["P2"]]:
+    # definitive loss statements
+    LOSE_SENTENCES = (
+        "has lost the game", 
+        "loses because of drawing a card",
+        "has conceded"
+    )
+    for loss_reason in LOSE_SENTENCES:
+        for action in curr_game_list:
             # concession
-            if "has conceded" in i:
-                if i.startswith(p1):
+            if loss_reason in action:
+                if action.startswith(p1):
                     return "P2"
-                elif i.startswith(p2):
-                    return "P1"
-            # run out of time
-            elif i.find("has run out of time and has lost the match") in i:
-                if i.split()[0] == p1:
-                    return "P2"
-                elif i.split()[0] == p2:
+                elif action.startswith(p2):
                     return "P1"
 
-        lastline = curr_game_list[-1]
-        # Check last GameAction. Add more lose conditions here.
-        LOSE_SENTENCES = (
-            "is being attacked", 
-            "has lost the game", 
-            "loses because of drawing a card"
-        )
-        # if the final line contains one of the above
-        if any(s in lastline for s in LOSE_SENTENCES):
-            if lastline.startswith(p1):
-                return "P2"
-            elif lastline.startswith(p2):
-                return "P1"
-        # Add more win conditions here.
-        WIN_SENTENCES = (
-            "triggered ability from [Thassa's Oracle]",
-            'casts [Approach of the Second Sun]'
-        )
-        # if the final line contains one of the above
-        if any(s in lastline for s in WIN_SENTENCES):
-            if lastline.startswith(p1):
-                return "P1"
-            elif lastline.startswith(p2):
-                return "P2"
-        # Could not determine a winner.
+    lastline = curr_game_list[-1]
+    # Last game actions that imply a loss
+    MAYBE_LOSS_SENTENCES = (
+        "is being attacked"
+    )
+    # Last game actions that imply a win
+    WIN_SENTENCES = (
+        "triggered ability from [Thassa's Oracle]",
+        'casts [Approach of the Second Sun]'
+    )
+    # if the final line contains one of the above
+    if any(s in lastline for s in MAYBE_LOSS_SENTENCES):
+        if lastline.startswith(p1):
+            return "P2"
+        elif lastline.startswith(p2):
+            return "P1"
+    # if the final line contains any win statements
+    elif any(s in lastline for s in WIN_SENTENCES):
+        if lastline.startswith(p1):
+            return "P1"
+        elif lastline.startswith(p2):
+            return "P2"
+    # Could not determine a winner.
+    else:
         return "NA"
 
 
@@ -866,7 +865,7 @@ def game_data(ga):
 
     for i in ga:
         curr_list = i.split()
-        if i.find("joined the game") != -1:
+        if "joined the game" in i:
             if player_count == 0:
                 # New Game
                 player_count = len(players(ga)) - 1
@@ -874,32 +873,34 @@ def game_data(ga):
                 if GAME_WINNER == "NA":
                     ALL_GAMES_GA[f"{MATCH_ID}-{GAME_NUM}"] = curr_game_list
                 if GAME_NUM == 1:
-                    G1.extend((MATCH_ID,
-                               alter(P1,original=True),
-                               alter(P2,original=True),
-                               GAME_NUM,
-                               PD_SELECTOR,
-                               PD_CHOICE,
-                               ON_PLAY,
-                               ON_DRAW,
-                               P1_MULLS,
-                               P2_MULLS,
-                               TURNS,
-                               GAME_WINNER))
+                    G1.extend((
+                        MATCH_ID,
+                        alter(P1,original=True),
+                        alter(P2,original=True),
+                        GAME_NUM,
+                        PD_SELECTOR,
+                        PD_CHOICE,
+                        ON_PLAY,
+                        ON_DRAW,
+                        P1_MULLS,
+                        P2_MULLS,
+                        TURNS,
+                        GAME_WINNER))
                     GAME_DATA.append(G1)
                 elif GAME_NUM == 2:
-                    G2.extend((MATCH_ID,
-                               alter(P1,original=True),
-                               alter(P2,original=True),
-                               GAME_NUM,
-                               PD_SELECTOR,
-                               PD_CHOICE,
-                               ON_PLAY,
-                               ON_DRAW,
-                               P1_MULLS,
-                               P2_MULLS,
-                               TURNS,
-                               GAME_WINNER))
+                    G2.extend((
+                        MATCH_ID,
+                        alter(P1,original=True),
+                        alter(P2,original=True),
+                        GAME_NUM,
+                        PD_SELECTOR,
+                        PD_CHOICE,
+                        ON_PLAY,
+                        ON_DRAW,
+                        P1_MULLS,
+                        P2_MULLS,
+                        TURNS,
+                        GAME_WINNER))
                     GAME_DATA.append(G2)
                 curr_game_list = []
             else:
@@ -980,15 +981,13 @@ def game_data(ga):
                    GAME_WINNER))
         GAME_DATA.append(G3)
     return (GAME_DATA,ALL_GAMES_GA)
-def play_data(ga):
-    # Input:  List[GameActions]
-    # Output: List[Plays]
 
-    def is_play(play):
+def is_play(play):
         action_keywords = ["plays","casts","draws","chooses","discards"]
-        action_keyphrases = ["is being attacked by",
-                             "puts triggered ability from",
-                             "activates an ability of",]
+        action_keyphrases = [
+            "is being attacked by",
+            "puts triggered ability from",
+            "activates an ability of",]
         curr_list = play.split()
         if len(curr_list) > 1:
             for i in action_keyphrases:
@@ -997,6 +996,10 @@ def play_data(ga):
             if curr_list[1] in action_keywords:
                 return True
         return False
+
+def play_data(ga):
+    # Input:  List[GameActions]
+    # Output: List[Plays]
 
     def player_is_target(tstring,player):
         count = tstring.count("[")    
@@ -1017,7 +1020,9 @@ def play_data(ga):
             return 8
         return num_dict[cards_drawn]
     
-    def get_cards(play):
+    def get_cards(play: str) -> list[str]:
+        card_re = re.compile(r"@\[(.+?)@]")
+        """old code
         cards = []
         count = play.count("@[")
         while count > 0:
@@ -1026,7 +1031,8 @@ def play_data(ga):
             cards.append(play[0])
             play = play[1]
             count -= 1  
-        return cards
+        """
+        return card_re.findall(play)
 
     PLAY_DATA = []
     ALL_PLAYS = []
