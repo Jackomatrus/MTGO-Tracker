@@ -1,5 +1,6 @@
 # MODO GameLog Cleaning Module
 import copy
+from typing import Literal, Union
 
 # To add a column to a database:
 # Add the column to modo.header() function.
@@ -9,6 +10,22 @@ import copy
 # To add a menu option to dropdowns in revision windows:
 # Add the option to the appropriate list below.
 # Add the option under the appropriate header in the input_options.txt file.
+
+
+MULL_DICT = {"seven":0,"six":1,"five":2,"four":3,"three":4,"two":5,"one":6,"zero":7}
+MONTH_DICT = {
+    "Jan":"01",
+    "Feb":"02",
+    "Mar":"03",
+    "Apr":"04",
+    "May":"05",
+    "Jun":"06",
+    "Jul":"07",
+    "Aug":"08",
+    "Sep":"09",
+    "Oct":"10",
+    "Nov":"11",
+    "Dec":"12"}
 
 def split_cards():
     all_split = ["Alive/Well","Appeal/Authority","Armed/Dangerous","Assault/Battery","Assure/Assemble","Beck/Call","Bedeck/Bedazzle","Boom/Bust",
@@ -376,7 +393,7 @@ def update_game_wins(ad,timeout):
                     i[mw_index] = "P2"
                 elif i[p2_index] == timeout[i[0]]:
                     i[mw_index] = "P1"
-def players(init: str) -> list[str]:
+def players(init: Union[str, list[str]]) -> list[str]:
     # Input:  String or List[Strings]
     # Output: List[Strings]
 
@@ -413,7 +430,10 @@ def alter(player_name: str, original: bool) -> str:
         player = player_name.replace(" ","+")
         player = player.replace(".","*")
     return player     
-def closest_list(cards_played,ad,yyyy_mm):
+def closest_list(
+    cards_played: set[str],
+    ad: dict[str, tuple[str, str, set[str]]],
+    yyyy_mm: str) -> list[str, str]:
     # Input:  Set{Strings},Dict{String : List[String,String,Set[Strings]]},String
     # Output: [String,String]
     
@@ -452,9 +472,15 @@ def closest_list(cards_played,ad,yyyy_mm):
         return [decks[index][0],decks[index][1]]
     else:
         return ["Unknown","NA"]
-def get_limited_subarch(cards_played):
-    # Input:  Set{Strings}
-    # Output: [String,String]
+def get_limited_subarch(cards_played: set[str]) -> Union[str, Literal["NA"]]:
+    """Names the sub-archetype after the colors in the deck.
+
+    Args:
+        cards_played (set[str]): Set of strings representing played cards.
+
+    Returns:
+        str: A slice of "WUBRG" or "NA"
+    """
 
     wubrg = ["","","","",""]
 
@@ -475,6 +501,7 @@ def get_limited_subarch(cards_played):
         return "NA"
     else:
         return limited_sa
+
 def parse_list(filename,init):
     # Input:  String,String
     # Output: [String,String,Set{MaindeckCards+SideboardCards}]
@@ -587,20 +614,20 @@ def parse_draft_log(file,initial):
     return (DRAFTS_TABLE,PICKS_TABLE,DRAFT_ID)
 def check_timeout(ga):
     for i in ga:
-        if i.find(" has lost the game due to disconnection") != -1:
+        if " has lost the game due to disconnection" in i:
             return (True,i.split(" has lost the game due to disconnection")[0])
+        # added timeout without disconnect
+        elif " has run out of time and has lost the match" in i:
+            return (True,i.split(" has run out of time and has lost the match")[0])
     return (False,None)
 def game_actions(init: str, time: str) -> list[str]:
     # Input:  String,String
     # Output: List[Strings]
 
     def format_time(time):
-        month_dict = {"Jan":"01","Feb":"02","Mar":"03","Apr":"04","May":"05",\
-                     "Jun":"06","Jul":"07","Aug":"08","Sep":"09","Oct":"10",\
-                     "Nov":"11","Dec":"12"}
         time = time.split()
         hhmmss = time[3].split(":")
-        time[1] = month_dict[time[1]]
+        time[1] = MONTH_DICT[time[1]]
         if len(time[2]) < 2:
             time[2] = "0" + time[2]
         return time[4] + time[1] + time[2] + hhmmss[0] + hhmmss[1]
@@ -663,29 +690,33 @@ def game_actions(init: str, time: str) -> list[str]:
             newstring = newstring.split("(")[0]
             gameactions.append(newstring)
         # Everything else
-        elif i.find(".") != -1:
+        elif "." in i:
             gameactions.append(fullstring)
     return gameactions
+
+
+def high_roll(init) -> dict:
+    remove_trailing = False
+    if isinstance(init, str):
+        init = init.split("@P")
+        remove_trailing = True
+    rolls = {}
+    for i in init:
+        if remove_trailing:
+            tstring = i.rsplit(".",1)[0]
+        else:
+            tstring = i
+        if " rolled a " in i:
+            tlist = tstring.split(" rolled a ")
+            if len(tlist[1]) == 1:
+                rolls[tlist[0].replace(" ","+")] = int(tlist[1])
+    return rolls
+
 def match_data(ga,gd,pd):
     # Input:  List[GameActions],List[GameData],List[PlayData]
     # Output: List[Match_Attributes]
 
-    def high_roll(init):
-        remove_trailing = False
-        if isinstance(init, str):
-            init = init.split("@P")
-            remove_trailing = True
-        rolls = {}
-        for i in init:
-            if remove_trailing:
-                tstring = i.rsplit(".",1)[0]
-            else:
-                tstring = i
-            if i.find(" rolled a ") != -1:
-                tlist = tstring.split(" rolled a ")
-                if len(tlist[1]) == 1:
-                    rolls[tlist[0].replace(" ","+")] = int(tlist[1])
-        return rolls
+
 
     MATCH_DATA =    []
     P1 =            players(ga)[0]
@@ -756,21 +787,14 @@ def match_data(ga,gd,pd):
                        MATCH_TYPE,
                        DATE))
     return MATCH_DATA
-def game_data(ga):
-    # Input:  List[GameActions]
-    # Output: List[G1_List,G2_List,G3_List,NA_Games_Dict{}]
 
-    def mulls(cards):
-        mull_dict = {"seven":0,"six":1,"five":2,"four":3,"three":4,"two":5,"one":6,"zero":7}
-        return mull_dict[cards]
-    
-    def get_winner(curr_game_list,p1,p2):
+def get_winner(curr_game_list,p1,p2):
         for i in curr_game_list:
             # concession
             if "has conceded" in i:
-                if i.split()[0] == p1:
+                if i.startswith(p1):
                     return "P2"
-                elif i.split()[0] == p2:
+                elif i.startswith(p2):
                     return "P1"
             # run out of time
             elif i.find("has run out of time and has lost the match") in i:
@@ -781,27 +805,37 @@ def game_data(ga):
 
         lastline = curr_game_list[-1]
         # Check last GameAction. Add more lose conditions here.
-        if lastline.find("is being attacked") != -1 or \
-           lastline.find("has lost the game") != -1 or \
-           lastline.find("loses because of drawing a card") != -1:
-            if lastline.split()[0] == p1:
+        LOSE_SENTENCES = (
+            "is being attacked", 
+            "has lost the game", 
+            "loses because of drawing a card"
+        )
+        # if the final line contains one of the above
+        if any(s in lastline for s in LOSE_SENTENCES):
+            if lastline.startswith(p1):
                 return "P2"
-            elif lastline.split()[0] == p2:
+            elif lastline.startswith(p2):
                 return "P1"
         # Add more win conditions here.
-        if lastline.find("triggered ability from [Thassa's Oracle]") != -1:
-            if lastline.split()[0] == p1:
+        WIN_SENTENCES = (
+            "triggered ability from [Thassa's Oracle]",
+            'casts [Approach of the Second Sun]'
+        )
+        # if the final line contains one of the above
+        if any(s in lastline for s in WIN_SENTENCES):
+            if lastline.startswith(p1):
                 return "P1"
-            elif lastline.split()[0] == p2:
-                return "P2"
-        # Approach
-        if 'casts [Approach of the Second Sun]' in lastline:
-            if lastline.split()[0] == p1:
-                return "P1"
-            elif lastline.split()[0] == p2:
+            elif lastline.startswith(p2):
                 return "P2"
         # Could not determine a winner.
-        return "NA" 
+        return "NA"
+
+
+def game_data(ga):
+    # Input:  List[GameActions]
+    # Output: List[G1_List,G2_List,G3_List,NA_Games_Dict{}]
+
+
 
     GAME_DATA =     []
     G1 =            []
@@ -870,7 +904,7 @@ def game_data(ga):
                 curr_game_list = []
             else:
                 player_count -= 1
-        elif (i.find("chooses to play first") != -1) or (i.find("chooses to not play first") != -1):
+        elif "chooses to play first" in i or "chooses to not play first" in i:
             GAME_NUM += 1
             if curr_list[0] == P1:
                 PD_SELECTOR = "P1"
@@ -892,14 +926,12 @@ def game_data(ga):
             elif PD_SELECTOR == "P2" and PD_CHOICE == "Draw":
                 ON_PLAY = "P1"
                 ON_DRAW = "P2"
-        elif i.find("begins the game with") != -1 and \
-             i.find("cards in hand") != -1:
+        elif "begins the game with" in i and "cards in hand" in i:
             if P1 == curr_list[0]:              
-                P1_MULLS = mulls(i.split(" begins the game with ")[1].split()[0])
+                P1_MULLS = MULL_DICT[i.split(" begins the game with ")[1].split()[0]]
             elif P2 == curr_list[0]:
-                P2_MULLS = mulls(i.split(" begins the game with ")[1].split()[0])
-        elif i.find("Turn ") != -1 and \
-             len(curr_list) == 3:
+                P2_MULLS = MULL_DICT[i.split(" begins the game with ")[1].split()[0]]
+        elif "Turn " in i and len(curr_list) == 3:
             TURNS = int(curr_list[1].split(":")[0])
         curr_game_list.append(i)
     GAME_WINNER = get_winner(curr_game_list,P1,P2)
@@ -960,7 +992,7 @@ def play_data(ga):
         curr_list = play.split()
         if len(curr_list) > 1:
             for i in action_keyphrases:
-                if play.find(i) != -1:
+                if i in play:
                     return True
             if curr_list[1] in action_keywords:
                 return True
@@ -970,12 +1002,12 @@ def play_data(ga):
         count = tstring.count("[")    
         while count > 0:
             tstring = tstring.split("[",1)
-            if tstring[0].find(player) != -1:
+            if player in tstring[0]:
                 return 1
             else:
                 tstring = tstring[1].split("]",1)[1]
                 count -= 1
-        if tstring.find(player) != -1:
+        if player in tstring:
             return 1   
         return 0
 
