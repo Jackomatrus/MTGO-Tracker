@@ -2,6 +2,7 @@
 import copy
 from typing import Literal, Union
 import re
+from MODO_DATA import CARDS_DRAWN_DICT, CONSTRUCTED_FORMATS, CONSTRUCTED_PLAY_TYPES, CUBE_FORMATS, DRAFT_FORMATS, DRAFT_PLAY_TYPES, LIMITED_FORMATS, MONTH_DICT, ADVENTURE_CARDS, SEALED_FORMATS, SEALED_PLAY_TYPES, SPLIT_CARDS, MULL_DICT
 
 # To add a column to a database:
 # Add the column to modo.header() function.
@@ -12,205 +13,49 @@ import re
 # Add the option to the appropriate list below.
 # Add the option under the appropriate header in the input_options.txt file.
 
-
-MULL_DICT = {"seven":0,"six":1,"five":2,"four":3,"three":4,"two":5,"one":6,"zero":7}
-MONTH_DICT = {
-    "Jan":"01",
-    "Feb":"02",
-    "Mar":"03",
-    "Apr":"04",
-    "May":"05",
-    "Jun":"06",
-    "Jul":"07",
-    "Aug":"08",
-    "Sep":"09",
-    "Oct":"10",
-    "Nov":"11",
-    "Dec":"12"}
-
-def split_cards():
-    all_split = ["Alive/Well","Appeal/Authority","Armed/Dangerous","Assault/Battery","Assure/Assemble","Beck/Call","Bedeck/Bedazzle","Boom/Bust",
-            "Bound/Determined","Breaking/Entering","Carnival/Carnage","Catch/Release","Claim/Fame","Collision/Colossus","Commit/Memory","Connive/Concoct",
-            "Consecrate/Consume","Consign/Oblivion","Crime/Punishment","Cut/Ribbons","Dead/Gone","Depose/Deploy","Destined/Lead","Discovery/Dispersal",
-            "Down/Dirty","Driven/Despair","Dusk/Dawn","Expansion/Explosion","Failure/Comply","Far/Away","Farm/Market","Fast/Furious",
-            "Find/Finality","Fire/Ice","Flesh/Blood","Flower/Flourish","Give/Take","Grind/Dust","Heaven/Earth","Hide/Seek",
-            "Hit/Run","Illusion/Reality","Incubation/Incongruity","Insult/Injury","Integrity/Intervention","Invert/Invent","Leave/Chance","Life/Death",
-            "Mouth/Feed","Never/Return","Night/Day","Odds/Ends","Onward/Victory","Order/Chaos","Pain/Suffering","Prepare/Fight",
-            "Profit/Loss","Protect/Serve","Pure/Simple","Rags/Riches","Ready/Willing","Reason/Believe","Reduce/Rubble","Refuse/Cooperate",
-            "Repudiate/Replicate","Research/Development","Response/Resurgence","Revival/Revenge","Rise/Fall","Road/Ruin","Rough/Tumble","Said/Done",
-            "Spite/Malice","Spring/Mind","Stand/Deliver","Start/Finish","Status/Statue","Struggle/Survive","Supply/Demand","Thrash/Threat",
-            "Toil/Trouble","Trial/Error","Turn/Burn","Warrant/Warden","Wax/Wane","Wear/Tear"]
-    split_dict = {}
-    for i in all_split:
-        half1 = i.split("/")[0]
-        half2 = i.split("/")[1]
-        split_dict[half1] = i
-        split_dict[half2] = i
-    return split_dict
-def adv_cards():
-    return {"Bring to Life" : "Animating Faerie",
-            "Dizzying Swoop" : "Ardenvale Tactician",
-            "Fertile Footsteps" : "Beanstalk Giant",
-            "Stomp" : "Bonecrusher Giant",
-            "Petty Theft" : "Brazen Borrower",
-            "Treats to Share" : "Curious Pair",
-            "Battle Display" : "Embereth Shieldbreaker",
-            "Granted" : "Fae of Wishes",
-            "Gift of the Fae" : "Faerie Guidemother",
-            "Welcome Home" : "Flaxen Intruder",
-            "Profane Insight" : "Foulmire Knight",
-            "Shield's Might" : "Garenbrig Carver",
-            "Chop Down" : "Giant Killer",
-            "Mesmeric Glare" : "Hypnotic Sprite",
-            "Rider in Need" : "Lonesome Unicorn",
-            "Heart's Desire" : "Lovestruck Beast",
-            "Haggle" : "Merchant of the Vale",
-            "Venture Deeper" : "Merfolk Secretkeeper",
-            "Swift End" : "Murderous Rider",
-            "Bring Back" : "Oakhame Ranger",
-            "Alter Fate" : "Order of Midnight",
-            "Rage of Winter" : "Queen of Ice",
-            "Cast Off" : "Realm-Cloaked Giant",
-            "Harvest Fear" : "Reaper of Night",
-            "Boulder Rush" : "Rimrock Knight",
-            "Seasonal Ritual" : "Rosethorn Acolyte",
-            "Usher to Safety" : "Shepherd of the Flock",
-            "On Alert" : "Silverflame Squire",
-            "Curry Favor" : "Smitten Swordmaster",
-            "Oaken Boon" : "Tuinvale Treefolk"}
-def clean_card_set(card_set):
-    cards = card_set
-    split_dict = split_cards()
-    adv_dict = adv_cards()
-    for i in list(cards):
+def clean_card_set(card_set: set) -> set:
+    for i in list(card_set):
         if i == "NA":
-            cards.remove(i)
-        elif i in split_dict:
-            cards.add(split_dict[i])
-            cards.remove(i)
-        elif i in adv_dict:
-            cards.add(adv_dict[i])
-            cards.remove(i)
-    return cards
-def formats(lim=False,con=False,cube=False,booster=False,sealed=False):
+            card_set.remove(i)
+        elif i in SPLIT_CARDS:
+            card_set.add(SPLIT_CARDS[i])
+            card_set.remove(i)
+        elif i in ADVENTURE_CARDS:
+            card_set.add(ADVENTURE_CARDS[i])
+            card_set.remove(i)
+    return card_set
+
+def formats(
+    limited: bool=False,
+    constructed: bool=False,
+    cube: bool=False,
+    booster: bool=False,
+    sealed: bool=False) -> list[str]:
     formats = []
-    lim_formats =  ["Booster Draft",
-                    "Sealed Deck",
-                    "Cube"]
-    con_formats =  ["Vintage",
-                    "Legacy",
-                    "Modern",
-                    "Standard",
-                    "Pioneer",
-                    "Pauper",
-                    "Other Constructed"]
-    cube_formats = ["Cube-Other",
-                    "Vintage Cube",
-                    "Legacy Cube",
-                    "Modern Cube"]
-    draft_formats= ["VMA x3",
-                    "VOW x3",
-                    "MID x3",
-                    "AFR x3",
-                    "MH2 x3",
-                    "STX x3",
-                    "TSR x3",
-                    "KHM x3",
-                    "ZNR x3",
-                    "2XM x3",
-                    "M21 x3",
-                    "IKO x3",
-                    "THB x3",
-                    "ELD x3",
-                    "M20 x3",
-                    "MH1 x3",
-                    "WAR x3",
-                    "RNA x3",
-                    "UMA x3",
-                    "GRN x3",
-                    "M19 x3",
-                    "DOM x3",
-                    "A25 x3",
-                    "RIX x3",
-                    "IMA x3",
-                    "XLN x3",
-                    "HOU x3",
-                    "AKH x3",
-                    "MM3 x3",
-                    "AER x3",
-                    "Other Booster Draft"]
-    sealed_formats=["VOW x6",
-                    "MID x6",
-                    "AFR x6",
-                    "MH2 x6",
-                    "STX x6",
-                    "TSR x6",
-                    "KHM x6",
-                    "ZNR x6",
-                    "2XM x6",
-                    "M21 x6",
-                    "IKO x6",
-                    "THB x6",
-                    "ELD x6",
-                    "M20 x6",
-                    "MH1 x6",
-                    "WAR x6",
-                    "RNA x6",
-                    "UMA x6",
-                    "GRN x6",
-                    "M19 x6",
-                    "DOM x6",
-                    "A25 x6",
-                    "RIX x6",
-                    "IMA x6",
-                    "XLN x6",
-                    "HOU x6",
-                    "AKH x6",
-                    "MM3 x6",
-                    "AER x6",
-                    "Other Sealed"]
-    if lim:
-        formats.extend(lim_formats)
-    if con:
-        formats.extend(con_formats)
+    if limited:
+        formats.extend(LIMITED_FORMATS)
+    if constructed:
+        formats.extend(CONSTRUCTED_FORMATS)
     if cube:
-        formats.extend(cube_formats)
+        formats.extend(CUBE_FORMATS)
     if booster:
-        formats.extend(draft_formats)
+        formats.extend(DRAFT_FORMATS)
     if sealed:
-        formats.extend(sealed_formats)
+        formats.extend(SEALED_FORMATS)
     return formats
-def match_types(con=False,booster=False,sealed=False):
+
+def match_types(
+    con: bool=False,draft: bool=False,sealed: bool=False
+    ) -> list[str]:
     match_types = []
-    con_types = ["League",
-                "Preliminary",
-                "Challenge",
-                "Premier Constructed",
-                "2-Man",
-                "Practice",
-                "Open Play BO1"]
-    booster_types = ["Draft League",
-                    "Swiss Draft",
-                    "Elimination Draft"]
-    sealed_types = ["Friendly Sealed League",
-                    "Competitive Sealed League",
-                    "Premier Sealed"]
     if con:
-        match_types.extend(con_types)
-    if booster:
-        match_types.extend(booster_types)
+        match_types.extend(CONSTRUCTED_PLAY_TYPES)
+    if draft:
+        match_types.extend(DRAFT_PLAY_TYPES)
     if sealed:
-        match_types.extend(sealed_types)
+        match_types.extend(SEALED_PLAY_TYPES)
     return match_types
-def archetypes():
-    return ["Aggro",
-            "Midrange",
-            "Control",
-            "Combo",
-            "Prison",
-            "Tempo",
-            "Ramp",
-            "Rogue"]
+
 def header(table):
     # Output: List[Play_Attributes]
 
@@ -298,6 +143,7 @@ def header(table):
                 "Avail_13",\
                 "Avail_14"]
     return []
+
 def invert_join(ad):
     # Input:  List[List[Matches],List[Games],List[Plays]]
     # Output: List[List[Matches],List[Games],List[Plays]]
@@ -395,8 +241,14 @@ def update_game_wins(ad,timeout):
                 elif i[p2_index] == timeout[i[0]]:
                     i[mw_index] = "P1"
 def players(init: Union[str, list[str]]) -> list[str]:
-    # Input:  String or List[Strings]
-    # Output: List[Strings]
+    """Parses a gamelof for player names.
+
+    Args:
+        init (Union[str, list[str]]): The game log.
+
+    Returns:
+        list[str]: all player names
+    """
 
     if isinstance(init, str):
         init = init.split("@P")
@@ -415,11 +267,12 @@ def players(init: Union[str, list[str]]) -> list[str]:
 
 def alter(player_name: str, original: bool) -> str:
     """If original: replaces + -> " " and * -> .
-    Otherwise reverses these operations.
+    Otherwise reverses these operations. Used to prevent errors with str.split
 
     Args:
         player_name (str): The player name
-        original (bool): _description_
+        original (bool): Set to True if you need the real name.
+            Set to False if you need a prettyfied name for python.
 
     Returns:
         str: Replaced string
@@ -430,13 +283,11 @@ def alter(player_name: str, original: bool) -> str:
     else:
         player = player_name.replace(" ","+")
         player = player.replace(".","*")
-    return player     
+    return player
 def closest_list(
     cards_played: set[str],
     ad: dict[str, tuple[str, str, set[str]]],
-    yyyy_mm: str) -> list[str, str]:
-    # Input:  Set{Strings},Dict{String : List[String,String,Set[Strings]]},String
-    # Output: [String,String]
+    yyyy_mm: str) -> tuple[str, str]:
     
     decks = []
     yyyy = yyyy_mm[0:4]
@@ -474,7 +325,7 @@ def closest_list(
     else:
         return ["Unknown","NA"]
 def get_limited_subarch(cards_played: set[str]) -> Union[str, Literal["NA"]]:
-    """Names the sub-archetype after the colors in the deck.
+    """Names the sub-archetype after the basic lands played.
 
     Args:
         cards_played (set[str]): Set of strings representing played cards.
@@ -536,84 +387,18 @@ def parse_list(filename,init):
                 card_count -= 1
                 
     return [name,d_format,set(maindeck)]
-def parse_draft_log(file,initial):
-    PICKS_TABLE = []
-    DRAFTS_TABLE = []
 
-    DRAFT_ID = ""
-    DATE = ""
-    EVENT_NUM = ""
-    HERO = ""
-    PLAYER_LIST = []
-    FORMAT = ""
-    CARD = ""
-    AVAIL_LIST = []
-    PACK_NUM = 0
-    PICK_NUM = 0
-    PICK_OVR = 0
-    FORMAT = file.split("-")[-1].split(".")[0]
+def check_timeout(ga: list[str]) -> tuple[bool, Union[Literal[None], str]]:
+    """Checks whether a player has timed out in a list of game actions.
 
-    player_bool = False
-    card_bool = False
-    last_pack_size = 0
-    init = initial.split("\n")
+    Args:
+        ga (list[str]): List of game actions
 
-    for i in init:
-        if i.find("Event #: ") != -1:
-            EVENT_NUM = i.split()[-1]
-        elif i.find("Time:    ") != -1:
-            year = i.split("/")[2].split()[0]
-            month = i.split("/")[0].split()[-1]
-            day = i.split("/")[1]
-            hour = i.split()[2].split(":")[0]
-            minute = i.split()[2].split(":")[1]
-            if (i.split()[-1] == "AM") & (hour == "12"):
-                hour = "00"
-            if (i.split()[-1] == "PM") & (hour != "12"):
-                hour = str(int(hour) + 12)
-            if len(month) == 1:
-                month = "0" + month
-            if len(day) == 1:
-                day = "0" + day
-            if len(hour) == 1:
-                hour = "0" + hour
-            DATE = f"{year}-{month}-{day}-{hour}:{minute}"
-        elif i == "Players:":
-            player_bool = True
-        elif i == "":
-            if player_bool:
-                player_bool = False
-            if card_bool:
-                card_bool = False
-                if len(AVAIL_LIST) > last_pack_size:
-                    PACK_NUM += 1
-                    PICK_NUM = 1
-                last_pack_size = len(AVAIL_LIST)
-                while len(AVAIL_LIST) < 14:
-                    AVAIL_LIST.append("NA")
-                PICKS_TABLE.append([DRAFT_ID,CARD,PACK_NUM,PICK_NUM,PICK_OVR] + AVAIL_LIST)
-                AVAIL_LIST = []
-        elif (i.find("Pack ") != -1) & (i.find(" pick ") != -1) & (len(i.split()) == 4):
-            card_bool = True
-        elif player_bool:
-            if (i.find("--> ") != -1):
-                HERO = i[4:]
-                DRAFT_ID = f"{year}{month}{day}{hour}{minute}_{HERO}_{FORMAT}_{EVENT_NUM}"
-            else:
-                PLAYER_LIST.append(i[4:])
-        elif card_bool:
-            if i.find("--> ") != -1:
-                CARD = i.split("--> ")[1]
-                PICK_NUM += 1
-                PICK_OVR += 1
-            else:
-                AVAIL_LIST.append(i.split("    ")[1])
-    while len(PLAYER_LIST) < 7:
-        PLAYER_LIST.append("NA")
-    DRAFTS_TABLE.append([DRAFT_ID,HERO] + PLAYER_LIST + [0,0,FORMAT,DATE])
-
-    return (DRAFTS_TABLE,PICKS_TABLE,DRAFT_ID)
-def check_timeout(ga):
+    Returns:
+        tuple[bool, Union[Literal[None], str]]: 
+        Boolean value is whether someone timed out.
+        If someone timed out, string is the players name.
+    """
     for i in ga:
         if " has lost the game due to disconnection" in i:
             return (True,i.split(" has lost the game due to disconnection")[0])
@@ -621,7 +406,8 @@ def check_timeout(ga):
         elif " has run out of time and has lost the match" in i:
             return (True,i.split(" has run out of time and has lost the match")[0])
     return (False,None)
-def game_actions(init: str, time: str) -> list[str]:
+
+def game_actions(game_log: str, time: str) -> list[str]:
     # Input:  String,String
     # Output: List[Strings]
 
@@ -633,27 +419,26 @@ def game_actions(init: str, time: str) -> list[str]:
             time[2] = "0" + time[2]
         return time[4] + time[1] + time[2] + hhmmss[0] + hhmmss[1]
 
-    initial =       init
-    gameactions =   []
-    p =             players(init)
-    lost_conn =     False
+    game_actions = []
+    players_list = players(game_log)
+    lost_conn = False
 
-    for i in p:
-        initial = initial.replace(i,alter(i,original=False))
+    for i in players_list:
+        game_log = game_log.replace(i,alter(i,original=False))
     # skip all text up to first @P
-    initial = initial.split("@P")[1:]
-    gameactions.append(format_time(time))
-    for i in initial:
+    game_log_list = game_log.split("@P")[1:]
+    game_actions.append(format_time(time))
+    for i in game_log_list:
         fullstring = i.replace(" (Alt.)", "")
         fullstring = fullstring.split(".")[0]
         # Player joined game header.
-        if i.find(" has lost connection to the game") != -1:
+        if " has lost connection to the game" in i:
             lost_conn = True
-        elif i.find(" joined the game.") != -1:
+        elif " joined the game." in i:
             if lost_conn:
                 lost_conn = False
             else:
-                gameactions.append(fullstring)
+                game_actions.append(fullstring)
         # Skip looking at extra cards.
         elif " draws their next card." in i:
             continue
@@ -661,21 +446,21 @@ def game_actions(init: str, time: str) -> list[str]:
         elif " has left the game." in i:
             continue
         # New turn header.
-        elif i.find("Turn ") != -1 and i.find(": ") != -1:
-            newstring = i.split()[0] + " " + i.split()[1]
-            for j in p:
-                if len(newstring.split()) < 3:
-                    if i.split(": ")[1].find(alter(j,original=False)) != -1:
+        elif "Turn " in i and ": " in i:
+            newstring = " ".join(i.split()[0:2])
+            for j in players_list:
+                if len(newstring.split()) < 3: # <-- this seems to always be true??
+                    if alter(j,original=False) in i.split(": ")[1]:
                         newstring += " " + alter(j,original=False)
-            gameactions.append(newstring)
+            game_actions.append(newstring)
         # Skip game state changes.
-        elif (i.count(".") == 0) and (i.count("is being attacked") == 0):
-            #print(i)
+        elif ('.' not in i) and ("is being attacked" not in i):
             continue
         # Remove tags from cards and rules text
-        elif (fullstring.count("@[") > 0) and (fullstring.count("@]") > 0):
+        # changes every @[Cardname@:NUMBERS,NUMBERS:@] to @[Cardname@]
+        elif ("@[" in fullstring) and ("@]" in fullstring):
             newstring = ""
-            while (fullstring.count("@[") > 0) and (fullstring.count("@]") > 0):
+            while ("@[" in fullstring) and ("@]" in fullstring):
                 tlist = fullstring.split("@",1)
                 newstring += tlist[0]
                 fullstring = tlist[1]
@@ -683,17 +468,17 @@ def game_actions(init: str, time: str) -> list[str]:
                 newstring += "@" + tlist[0] + "@]"
                 fullstring = tlist[1]
                 tlist = fullstring.split("@]",1)
-                fullstring = tlist[1]        
+                fullstring = tlist[1]
             newstring += tlist[1]
             newstring = newstring.split("(")[0]
-            gameactions.append(newstring)
+            game_actions.append(newstring)
         # Everything else
         elif "." in i:
-            gameactions.append(fullstring)
-    return gameactions
+            game_actions.append(fullstring)
+    return game_actions
 
 
-def high_roll(init) -> dict:
+def high_roll(init: Union[str, list[str]]) -> dict:
     remove_trailing = False
     if isinstance(init, str):
         init = init.split("@P")
@@ -751,7 +536,7 @@ def match_data(ga,gd,pd):
             P1_WINS += 1
         elif i[0] == MATCH_ID and i[header("Games").index("Game_Winner")] == "P2":
             P2_WINS += 1
-       
+
     if P1_WINS > P2_WINS:
         MATCH_WINNER = "P1"
     elif P2_WINS > P1_WINS:
@@ -766,24 +551,25 @@ def match_data(ga,gd,pd):
         else:
             MATCH_WINNER = "NA"
 
-    MATCH_DATA.extend((MATCH_ID,
-                       DRAFT_ID,
-                       alter(P1,original=True),
-                       P1_ARCH,
-                       P1_SUBARCH,
-                       alter(P2,original=True),
-                       P2_ARCH,
-                       P2_SUBARCH,
-                       P1_ROLL,
-                       P2_ROLL,
-                       ROLL_WINNER,
-                       P1_WINS,
-                       P2_WINS,
-                       MATCH_WINNER,
-                       MATCH_FORMAT,
-                       LIM_FORMAT,
-                       MATCH_TYPE,
-                       DATE))
+    MATCH_DATA.extend((
+        MATCH_ID,
+        DRAFT_ID,
+        alter(P1,original=True),
+        P1_ARCH,
+        P1_SUBARCH,
+        alter(P2,original=True),
+        P2_ARCH,
+        P2_SUBARCH,
+        P1_ROLL,
+        P2_ROLL,
+        ROLL_WINNER,
+        P1_WINS,
+        P2_WINS,
+        MATCH_WINNER,
+        MATCH_FORMAT,
+        LIM_FORMAT,
+        MATCH_TYPE,
+        DATE))
     return MATCH_DATA
 
 def get_winner(curr_game_list: list[str], p1: str, p2: str
@@ -833,8 +619,6 @@ def get_winner(curr_game_list: list[str], p1: str, p2: str
 def game_data(ga):
     # Input:  List[GameActions]
     # Output: List[G1_List,G2_List,G3_List,NA_Games_Dict{}]
-
-
 
     GAME_DATA =     []
     G1 =            []
@@ -939,100 +723,97 @@ def game_data(ga):
     if GAME_WINNER == "NA":
         ALL_GAMES_GA[f"{MATCH_ID}-{GAME_NUM}"] = curr_game_list
     if GAME_NUM == 1:
-        G1.extend((MATCH_ID,
-                   alter(P1,original=True),
-                   alter(P2,original=True),
-                   GAME_NUM,
-                   PD_SELECTOR,
-                   PD_CHOICE,
-                   ON_PLAY,
-                   ON_DRAW,
-                   P1_MULLS,
-                   P2_MULLS,
-                   TURNS,
-                   GAME_WINNER))
+        G1.extend((
+            MATCH_ID,
+            alter(P1,original=True),
+            alter(P2,original=True),
+            GAME_NUM,
+            PD_SELECTOR,
+            PD_CHOICE,
+            ON_PLAY,
+            ON_DRAW,
+            P1_MULLS,
+            P2_MULLS,
+            TURNS,
+            GAME_WINNER))
         GAME_DATA.append(G1)
     elif GAME_NUM == 2:
-        G2.extend((MATCH_ID,
-                   alter(P1,original=True),
-                   alter(P2,original=True),
-                   GAME_NUM,
-                   PD_SELECTOR,
-                   PD_CHOICE,
-                   ON_PLAY,
-                   ON_DRAW,
-                   P1_MULLS,
-                   P2_MULLS,
-                   TURNS,
-                   GAME_WINNER))
+        G2.extend((
+            MATCH_ID,
+            alter(P1,original=True),
+            alter(P2,original=True),
+            GAME_NUM,
+            PD_SELECTOR,
+            PD_CHOICE,
+            ON_PLAY,
+            ON_DRAW,
+            P1_MULLS,
+            P2_MULLS,
+            TURNS,
+            GAME_WINNER))
         GAME_DATA.append(G2)
     elif GAME_NUM == 3:
-        G3.extend((MATCH_ID,
-                   alter(P1,original=True),
-                   alter(P2,original=True),
-                   GAME_NUM,
-                   PD_SELECTOR,
-                   PD_CHOICE,
-                   ON_PLAY,
-                   ON_DRAW,
-                   P1_MULLS,
-                   P2_MULLS,
-                   TURNS,
-                   GAME_WINNER))
+        G3.extend((
+            MATCH_ID,
+            alter(P1,original=True),
+            alter(P2,original=True),
+            GAME_NUM,
+            PD_SELECTOR,
+            PD_CHOICE,
+            ON_PLAY,
+            ON_DRAW,
+            P1_MULLS,
+            P2_MULLS,
+            TURNS,
+            GAME_WINNER))
         GAME_DATA.append(G3)
     return (GAME_DATA,ALL_GAMES_GA)
 
-def is_play(play):
-        action_keywords = ["plays","casts","draws","chooses","discards"]
-        action_keyphrases = [
-            "is being attacked by",
-            "puts triggered ability from",
-            "activates an ability of",]
-        curr_list = play.split()
-        if len(curr_list) > 1:
-            for i in action_keyphrases:
-                if i in play:
-                    return True
-            if curr_list[1] in action_keywords:
+def is_play(play: str) -> bool:
+    action_keywords = ["plays","casts","draws","chooses","discards"]
+    action_keyphrases = [
+        "is being attacked by",
+        "puts triggered ability from",
+        "activates an ability of",]
+    curr_list = play.split()
+    if len(curr_list) > 1:
+        for i in action_keyphrases:
+            if i in play:
                 return True
-        return False
+        if curr_list[1] in action_keywords:
+            return True
+    return False
 
-def play_data(ga):
+def get_cards(play: str) -> list[str]:
+    card_re = re.compile(r"@\[(.+?)@]")
+    """old code
+    cards = []
+    count = play.count("@[")
+    while count > 0:
+        play = play.split("@[",1)
+        play = play[1].split("@]",1)
+        cards.append(play[0])
+        play = play[1]
+        count -= 1  
+    """
+    return card_re.findall(play)
+
+def play_data(ga: list[str]):
     # Input:  List[GameActions]
     # Output: List[Plays]
 
-    def player_is_target(tstring,player):
-        count = tstring.count("[")    
-        while count > 0:
+    def player_is_target(
+        tstring: str, player: str
+        ) -> Union[Literal[0], Literal[1]]:
+        while tstring.count("[") > 0:
             tstring = tstring.split("[",1)
             if player in tstring[0]:
                 return 1
             else:
                 tstring = tstring[1].split("]",1)[1]
-                count -= 1
         if player in tstring:
             return 1   
         return 0
-
-    def cards_drawn(cards_drawn):
-        num_dict = {"zero":0,"a":1,"two":2,"three":3,"four":4,"five":5,"six":6,"seven":7}
-        if cards_drawn not in num_dict:
-            return 8
-        return num_dict[cards_drawn]
-    
-    def get_cards(play: str) -> list[str]:
-        card_re = re.compile(r"@\[(.+?)@]")
-        """old code
-        cards = []
-        count = play.count("@[")
-        while count > 0:
-            play = play.split("@[",1)
-            play = play[1].split("@]",1)
-            cards.append(play[0])
-            play = play[1]
-            count -= 1  
-        """
-        return card_re.findall(play)
 
     PLAY_DATA = []
     ALL_PLAYS = []
@@ -1045,7 +826,6 @@ def play_data(ga):
 
     P1 = players(ga)[0]
     P2 = players(ga)[1]
-    curr_list = []
     MATCH_ID = f"{ga[0]}_{P1}_{P2}"
 
     for i in ga:
@@ -1111,7 +891,7 @@ def play_data(ga):
             elif curr_list[1] == "draws":
                 CASTING_PLAYER = curr_list[0]
                 ACTION = curr_list[1].capitalize()
-                CARDS_DRAWN = cards_drawn(curr_list[2])
+                CARDS_DRAWN = CARDS_DRAWN_DICT.get(curr_list[2], 8)
             elif curr_list[1] == "chooses":
                 continue
             elif curr_list[1] == "discards":
@@ -1199,11 +979,11 @@ def play_data(ga):
                               alter(NON_ACTIVE_PLAYER,original=True)))
             ALL_PLAYS.append(PLAY_DATA)
     return ALL_PLAYS
-def get_all_data(init: str, mtime: str):
+def get_all_data(game_log: str, mtime: str):
     # Input:  String,String
     # Output: List[Matches,Games,Plays]
     
-    gameactions = game_actions(init,mtime)
+    gameactions = game_actions(game_log,mtime)
     gamedata = game_data(gameactions)
     if isinstance(gamedata, str):
         return gamedata
