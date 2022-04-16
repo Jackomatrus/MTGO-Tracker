@@ -7,10 +7,12 @@ from tkinter import messagebox
 from tkinter import ttk
 from tkcalendar import DateEntry
 import csv
+from MODO_DATA import ARCHETYPES
 import modo
 import os
 import time
 import io
+import log_parser
 import datetime
 import itertools
 import pickle
@@ -457,11 +459,11 @@ def startup():
                 last = i
     else:
         INPUT_OPTIONS["Constructed Match Types"] = modo.match_types(con=True)
-        INPUT_OPTIONS["Booster Draft Match Types"] = modo.match_types(booster=True)
+        INPUT_OPTIONS["Booster Draft Match Types"] = modo.match_types(draft=True)
         INPUT_OPTIONS["Sealed Match Types"] = modo.match_types(sealed=True)
-        INPUT_OPTIONS["Archetypes"] = modo.archetypes()
-        INPUT_OPTIONS["Constructed Formats"] = modo.formats(con=True)
-        INPUT_OPTIONS["Limited Formats"] = modo.formats(lim=True)
+        INPUT_OPTIONS["Archetypes"] = ARCHETYPES
+        INPUT_OPTIONS["Constructed Formats"] = modo.formats(constructed=True)
+        INPUT_OPTIONS["Limited Formats"] = modo.formats(limited=True)
         INPUT_OPTIONS["Cube Formats"] = modo.formats(cube=True)
         INPUT_OPTIONS["Booster Draft Formats"] = modo.formats(booster=True)
         INPUT_OPTIONS["Sealed Formats"] = modo.formats(sealed=True)
@@ -610,7 +612,7 @@ def get_all_data(fp_logs,fp_drafts,copy):
                     with io.open(i,"r",encoding="ansi") as gamelog:
                         initial = gamelog.read()
                         mtime = time.ctime(os.path.getmtime(i))
-                    parsed_data = modo.get_all_data(initial,mtime)
+                    parsed_data = modo.get_all_data(initial, mtime)
                     if isinstance(parsed_data, str):
                         skip_dict[i] = parsed_data
                         continue
@@ -655,7 +657,7 @@ def get_all_data(fp_logs,fp_drafts,copy):
                 os.chdir(root)
                 with io.open(i,"r",encoding="ansi") as gamelog:
                     initial = gamelog.read()   
-                parsed_data = modo.parse_draft_log(i,initial) 
+                parsed_data = log_parser.parse_draft_log(i,initial) 
                 DRAFTS_TABLE.extend(parsed_data[0])
                 PICKS_TABLE.extend(parsed_data[1])
                 PARSED_DRAFT_DICT[i] = parsed_data[2]
@@ -668,14 +670,9 @@ def get_all_data(fp_logs,fp_drafts,copy):
                         pass
                 draft_count += 1
 
-    if (match_count == 1) & (draft_count == 1):
-        update_status_bar(status=f"Imported {str(match_count)} new Match and {str(draft_count)} new Draft.")
-    elif (match_count == 1):
-        update_status_bar(status=f"Imported {str(match_count)} new Match and {str(draft_count)} new Drafts.")
-    elif (draft_count == 1):
-        update_status_bar(status=f"Imported {str(match_count)} new Matches and {str(draft_count)} new Draft.")
-    else:
-        update_status_bar(status=f"Imported {str(match_count)} new Matches and {str(draft_count)} new Drafts.")
+    match_string = f'{match_count} new Match{"es" if match_count != 1 else ""}'
+    draft_string = f'{draft_count} new Draft{"s" if draft_count != 1 else ""}'
+    update_status_bar(status=f"Imported {match_string} and {draft_string}.")
 
     print(skip_dict)
 
@@ -3203,7 +3200,7 @@ def get_stats():
         if len(tree1_dates) < 30:
             tree1_count = len(tree1_dates)
         for index,i in enumerate(tree1_format):
-            if i in modo.formats(lim=True):
+            if i in modo.formats(limited=True):
                 tree1_format[index] += ": " + tree1_lformat[index]
         for index,i in enumerate(tree1_result):
             if i == "P1":
@@ -3230,7 +3227,7 @@ def get_stats():
         if len(tree2_dates) < 30:
             tree2_count = len(tree2_dates)
         for index,i in enumerate(tree2_format):
-            if i in modo.formats(lim=True):
+            if i in modo.formats(limited=True):
                 tree2_format[index] += ": " + tree2_lformat[index]
         for index,i in enumerate(tree2_result):
             if i == "P1":
@@ -3276,7 +3273,7 @@ def get_stats():
 
         if mformat == "All Formats":
             mid_frame10["text"] = "Choose a Format"
-        elif (mformat in modo.formats(lim=True)) & (lformat != "All Limited Formats"):
+        elif (mformat in modo.formats(limited=True)) & (lformat != "All Limited Formats"):
             mid_frame10["text"] = "Match History: " + hero + " - " + mformat + ", " + lformat
         else:
             mid_frame10["text"] = "Match History: " + hero + " - " + mformat
