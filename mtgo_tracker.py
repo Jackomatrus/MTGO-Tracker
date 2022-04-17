@@ -17,6 +17,11 @@ import datetime
 import itertools
 import pickle
 import shutil
+from MODO_DATA import (
+    CARDS_DRAWN_DICT, CONSTRUCTED_FORMATS, CONSTRUCTED_PLAY_TYPES, 
+    CUBE_FORMATS, DRAFT_FORMATS, DRAFT_PLAY_TYPES, LIMITED_FORMATS, 
+    ADVENTURE_CARDS, SEALED_FORMATS, SEALED_PLAY_TYPES, SPLIT_CARDS, MULL_DICT
+    )
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 pd.options.mode.chained_assignment = None
 
@@ -458,15 +463,15 @@ def startup():
                     y.append(i)
                 last = i
     else:
-        INPUT_OPTIONS["Constructed Match Types"] = modo.match_types(con=True)
-        INPUT_OPTIONS["Booster Draft Match Types"] = modo.match_types(draft=True)
-        INPUT_OPTIONS["Sealed Match Types"] = modo.match_types(sealed=True)
+        INPUT_OPTIONS["Constructed Match Types"] = CONSTRUCTED_PLAY_TYPES
+        INPUT_OPTIONS["Booster Draft Match Types"] = DRAFT_PLAY_TYPES
+        INPUT_OPTIONS["Sealed Match Types"] = SEALED_PLAY_TYPES
         INPUT_OPTIONS["Archetypes"] = ARCHETYPES
-        INPUT_OPTIONS["Constructed Formats"] = modo.formats(constructed=True)
-        INPUT_OPTIONS["Limited Formats"] = modo.formats(limited=True)
-        INPUT_OPTIONS["Cube Formats"] = modo.formats(cube=True)
-        INPUT_OPTIONS["Booster Draft Formats"] = modo.formats(booster=True)
-        INPUT_OPTIONS["Sealed Formats"] = modo.formats(sealed=True)
+        INPUT_OPTIONS["Constructed Formats"] = CONSTRUCTED_FORMATS
+        INPUT_OPTIONS["Limited Formats"] = LIMITED_FORMATS
+        INPUT_OPTIONS["Cube Formats"] = CUBE_FORMATS
+        INPUT_OPTIONS["Booster Draft Formats"] = DRAFT_FORMATS
+        INPUT_OPTIONS["Sealed Formats"] = SEALED_FORMATS
     
     FILEPATH_ROOT = os.getcwd()
     if os.path.isdir("save") == False:
@@ -611,12 +616,14 @@ def get_all_data(fp_logs,fp_drafts,copy):
                     os.chdir(root)
                     with io.open(i,"r",encoding="ansi") as gamelog:
                         initial = gamelog.read()
-                        mtime = time.ctime(os.path.getmtime(i))
+                        mtime = time.localtime(os.path.getmtime(i))
                     parsed_data = modo.get_all_data(initial, mtime)
                     if isinstance(parsed_data, str):
                         skip_dict[i] = parsed_data
                         continue
-                    PARSED_FILE_DICT[i] = (parsed_data[0][0],datetime.datetime.strptime(mtime,"%a %b %d %H:%M:%S %Y"))
+                    PARSED_FILE_DICT[i] = (
+                        parsed_data[0][0],
+                        datetime.datetime.fromtimestamp(time.mktime(mtime)))
                     if copy:
                         try:
                             shutil.copy(i,FILEPATH_LOGS_COPY)
@@ -3200,7 +3207,7 @@ def get_stats():
         if len(tree1_dates) < 30:
             tree1_count = len(tree1_dates)
         for index,i in enumerate(tree1_format):
-            if i in modo.formats(limited=True):
+            if i in LIMITED_FORMATS:
                 tree1_format[index] += ": " + tree1_lformat[index]
         for index,i in enumerate(tree1_result):
             if i == "P1":
@@ -3227,7 +3234,7 @@ def get_stats():
         if len(tree2_dates) < 30:
             tree2_count = len(tree2_dates)
         for index,i in enumerate(tree2_format):
-            if i in modo.formats(limited=True):
+            if i in LIMITED_FORMATS:
                 tree2_format[index] += ": " + tree2_lformat[index]
         for index,i in enumerate(tree2_result):
             if i == "P1":
@@ -3273,7 +3280,7 @@ def get_stats():
 
         if mformat == "All Formats":
             mid_frame10["text"] = "Choose a Format"
-        elif (mformat in modo.formats(limited=True)) & (lformat != "All Limited Formats"):
+        elif (mformat in LIMITED_FORMATS) & (lformat != "All Limited Formats"):
             mid_frame10["text"] = "Match History: " + hero + " - " + mformat + ", " + lformat
         else:
             mid_frame10["text"] = "Match History: " + hero + " - " + mformat
