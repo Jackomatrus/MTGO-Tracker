@@ -1,17 +1,4 @@
 MULL_DICT = {"seven":0,"six":1,"five":2,"four":3,"three":4,"two":5,"one":6,"zero":7}
-MONTH_DICT = {
-    "Jan":"01",
-    "Feb":"02",
-    "Mar":"03",
-    "Apr":"04",
-    "May":"05",
-    "Jun":"06",
-    "Jul":"07",
-    "Aug":"08",
-    "Sep":"09",
-    "Oct":"10",
-    "Nov":"11",
-    "Dec":"12"}
 SPLIT_CARDS = {
     'Alive': 'Alive/Well',
     'Well': 'Alive/Well',
