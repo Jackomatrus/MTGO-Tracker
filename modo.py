@@ -1,8 +1,13 @@
 # MODO GameLog Cleaning Module
 import copy
+from time import strftime, struct_time
 from typing import Literal, Union
 import re
-from MODO_DATA import CARDS_DRAWN_DICT, CONSTRUCTED_FORMATS, CONSTRUCTED_PLAY_TYPES, CUBE_FORMATS, DRAFT_FORMATS, DRAFT_PLAY_TYPES, LIMITED_FORMATS, MONTH_DICT, ADVENTURE_CARDS, SEALED_FORMATS, SEALED_PLAY_TYPES, SPLIT_CARDS, MULL_DICT
+from MODO_DATA import (
+    CARDS_DRAWN_DICT, CONSTRUCTED_FORMATS, CONSTRUCTED_PLAY_TYPES, 
+    CUBE_FORMATS, DRAFT_FORMATS, DRAFT_PLAY_TYPES, LIMITED_FORMATS, 
+    ADVENTURE_CARDS, SEALED_FORMATS, SEALED_PLAY_TYPES, SPLIT_CARDS, MULL_DICT
+    )
 
 # To add a column to a database:
 # Add the column to modo.header() function.
@@ -13,7 +18,15 @@ from MODO_DATA import CARDS_DRAWN_DICT, CONSTRUCTED_FORMATS, CONSTRUCTED_PLAY_TY
 # Add the option to the appropriate list below.
 # Add the option under the appropriate header in the input_options.txt file.
 
-def clean_card_set(card_set: set) -> set:
+def clean_card_set(card_set: set[str]) -> set[str]:
+    """Fixes sets of adventure and split card names for draft.
+
+    Args:
+        card_set (set[str]): A set of card names.
+
+    Returns:
+        set[str]: Modified set (removed NA values and fixed split/adv)
+    """
     for i in list(card_set):
         if i == "NA":
             card_set.remove(i)
@@ -24,37 +37,6 @@ def clean_card_set(card_set: set) -> set:
             card_set.add(ADVENTURE_CARDS[i])
             card_set.remove(i)
     return card_set
-
-def formats(
-    limited: bool=False,
-    constructed: bool=False,
-    cube: bool=False,
-    booster: bool=False,
-    sealed: bool=False) -> list[str]:
-    formats = []
-    if limited:
-        formats.extend(LIMITED_FORMATS)
-    if constructed:
-        formats.extend(CONSTRUCTED_FORMATS)
-    if cube:
-        formats.extend(CUBE_FORMATS)
-    if booster:
-        formats.extend(DRAFT_FORMATS)
-    if sealed:
-        formats.extend(SEALED_FORMATS)
-    return formats
-
-def match_types(
-    con: bool=False,draft: bool=False,sealed: bool=False
-    ) -> list[str]:
-    match_types = []
-    if con:
-        match_types.extend(CONSTRUCTED_PLAY_TYPES)
-    if draft:
-        match_types.extend(DRAFT_PLAY_TYPES)
-    if sealed:
-        match_types.extend(SEALED_PLAY_TYPES)
-    return match_types
 
 def header(table):
     # Output: List[Play_Attributes]
@@ -109,38 +91,38 @@ def header(table):
                 "Active_Player",
                 "Nonactive_Player"]
     elif table == "Drafts":
-        return ["Draft_ID",\
-                "Hero",\
-                "Player_2",\
-                "Player_3",\
-                "Player_4",\
-                "Player_5",\
-                "Player_6",\
-                "Player_7",\
-                "Player_8",\
-                "Match_Wins",\
-                "Match_Losses",\
-                "Format",\
+        return ["Draft_ID",
+                "Hero",
+                "Player_2",
+                "Player_3",
+                "Player_4",
+                "Player_5",
+                "Player_6",
+                "Player_7",
+                "Player_8",
+                "Match_Wins",
+                "Match_Losses",
+                "Format",
                 "Date"]
     elif table == "Picks":
-        return ["Draft_ID",\
-                "Card",\
-                "Pack_Num",\
-                "Pick_Num",\
-                "Pick_Ovr",\
-                "Avail_1",\
-                "Avail_2",\
-                "Avail_3",\
-                "Avail_4",\
-                "Avail_5",\
-                "Avail_6",\
-                "Avail_7",\
-                "Avail_8",\
-                "Avail_9",\
-                "Avail_10",\
-                "Avail_11",\
-                "Avail_12",\
-                "Avail_13",\
+        return ["Draft_ID",
+                "Card",
+                "Pack_Num",
+                "Pick_Num",
+                "Pick_Ovr",
+                "Avail_1",
+                "Avail_2",
+                "Avail_3",
+                "Avail_4",
+                "Avail_5",
+                "Avail_6",
+                "Avail_7",
+                "Avail_8",
+                "Avail_9",
+                "Avail_10",
+                "Avail_11",
+                "Avail_12",
+                "Avail_13",
                 "Avail_14"]
     return []
 
@@ -149,6 +131,7 @@ def invert_join(ad):
     # Output: List[List[Matches],List[Games],List[Plays]]
 
     def swap_cols(data,header,col_a,col_b):
+
         # Input:  List[Matches or Games],List[Headers],String,String
         # Output: List[Matches]   
 
@@ -244,7 +227,7 @@ def players(init: Union[str, list[str]]) -> list[str]:
     """Parses a gamelof for player names.
 
     Args:
-        init (Union[str, list[str]]): The game log.
+        init (Union[str, list[str]]): The pure game log.
 
     Returns:
         list[str]: all player names
@@ -407,27 +390,19 @@ def check_timeout(ga: list[str]) -> tuple[bool, Union[Literal[None], str]]:
             return (True,i.split(" has run out of time and has lost the match")[0])
     return (False,None)
 
-def game_actions(game_log: str, time: str) -> list[str]:
+def game_actions(game_log: str, file_modified_time: struct_time) -> list[str]:
     # Input:  String,String
     # Output: List[Strings]
-
-    def format_time(time):
-        time = time.split()
-        hhmmss = time[3].split(":")
-        time[1] = MONTH_DICT[time[1]]
-        if len(time[2]) < 2:
-            time[2] = "0" + time[2]
-        return time[4] + time[1] + time[2] + hhmmss[0] + hhmmss[1]
-
     game_actions = []
     players_list = players(game_log)
     lost_conn = False
+    turn_header = re.compile(r"Turn \d+: ")
 
     for i in players_list:
         game_log = game_log.replace(i,alter(i,original=False))
     # skip all text up to first @P
     game_log_list = game_log.split("@P")[1:]
-    game_actions.append(format_time(time))
+    game_actions.append(strftime(r'%Y%m%d%H%M', file_modified_time))
     for i in game_log_list:
         fullstring = i.replace(" (Alt.)", "")
         fullstring = fullstring.split(".")[0]
@@ -445,8 +420,8 @@ def game_actions(game_log: str, time: str) -> list[str]:
         # Skip leaving to sideboard.
         elif " has left the game." in i:
             continue
-        # New turn header.
-        elif "Turn " in i and ": " in i:
+        # New turn header. Removes the artifacts
+        elif turn_header.search(i):
             newstring = " ".join(i.split()[0:2])
             for j in players_list:
                 if len(newstring.split()) < 3: # <-- this seems to always be true??
@@ -456,21 +431,14 @@ def game_actions(game_log: str, time: str) -> list[str]:
         # Skip game state changes.
         elif ('.' not in i) and ("is being attacked" not in i):
             continue
-        # Remove tags from cards and rules text
-        # changes every @[Cardname@:NUMBERS,NUMBERS:@] to @[Cardname@]
+        
         elif ("@[" in fullstring) and ("@]" in fullstring):
-            newstring = ""
-            while ("@[" in fullstring) and ("@]" in fullstring):
-                tlist = fullstring.split("@",1)
-                newstring += tlist[0]
-                fullstring = tlist[1]
-                tlist = fullstring.split("@",1)
-                newstring += "@" + tlist[0] + "@]"
-                fullstring = tlist[1]
-                tlist = fullstring.split("@]",1)
-                fullstring = tlist[1]
-            newstring += tlist[1]
-            newstring = newstring.split("(")[0]
+            # changes every @[Cardname@:NUMBERS,NUMBERS:@] to @[Cardname@]
+            newstring = re.sub(
+                r"(@\[.+?)(@:\d+?,\d+?:)(@\])", 
+                r'\g<1>\g<3>', # remove group 2
+                fullstring)
+            newstring = newstring.split("(")[0] # not sure why this is here
             game_actions.append(newstring)
         # Everything else
         elif "." in i:
@@ -498,8 +466,6 @@ def high_roll(init: Union[str, list[str]]) -> dict:
 def match_data(ga,gd,pd):
     # Input:  List[GameActions],List[GameData],List[PlayData]
     # Output: List[Match_Attributes]
-
-
 
     MATCH_DATA =    []
     P1 =            players(ga)[0]
@@ -961,29 +927,31 @@ def play_data(ga: list[str]):
                         SELF_TARGET = player_is_target(i.split("targeting")[1],P2)
                         OPP_TARGET = player_is_target(i.split("targeting")[1],P1)
             PLAY_NUM += 1
-            PLAY_DATA.extend((MATCH_ID,
-                              GAME_NUM,
-                              PLAY_NUM,
-                              TURN_NUM,
-                              alter(CASTING_PLAYER,original=True),
-                              ACTION,
-                              PRIMARY_CARD,
-                              TARGET_1,
-                              TARGET_2,
-                              TARGET_3,
-                              OPP_TARGET,
-                              SELF_TARGET,
-                              CARDS_DRAWN,
-                              ATTACKERS,
-                              alter(ACTIVE_PLAYER,original=True),
-                              alter(NON_ACTIVE_PLAYER,original=True)))
+            PLAY_DATA.extend((
+                MATCH_ID,
+                GAME_NUM,
+                PLAY_NUM,
+                TURN_NUM,
+                alter(CASTING_PLAYER,original=True),
+                ACTION,
+                PRIMARY_CARD,
+                TARGET_1,
+                TARGET_2,
+                TARGET_3,
+                OPP_TARGET,
+                SELF_TARGET,
+                CARDS_DRAWN,
+                ATTACKERS,
+                alter(ACTIVE_PLAYER,original=True),
+                alter(NON_ACTIVE_PLAYER,original=True)))
             ALL_PLAYS.append(PLAY_DATA)
     return ALL_PLAYS
-def get_all_data(game_log: str, mtime: str):
+
+def get_all_data(game_log: str, file_last_modified: struct_time):
     # Input:  String,String
     # Output: List[Matches,Games,Plays]
     
-    gameactions = game_actions(game_log,mtime)
+    gameactions = game_actions(game_log,file_last_modified)
     gamedata = game_data(gameactions)
     if isinstance(gamedata, str):
         return gamedata
