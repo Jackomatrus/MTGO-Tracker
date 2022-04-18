@@ -681,8 +681,6 @@ def get_all_data(fp_logs,fp_drafts,copy):
     draft_string = f'{draft_count} new Draft{"s" if draft_count != 1 else ""}'
     update_status_bar(status=f"Imported {match_string} and {draft_string}.")
 
-    print(skip_dict)
-
     if (match_count > 0) or (draft_count > 0):
         ask_to_save = True
     new_import = True
@@ -817,6 +815,7 @@ def get_lists():
         files = os.listdir()
         month_decks = []
         for j in files:
+            # files must be named "Format - Deckname.txt"
             with io.open(j,"r",encoding="ansi") as decklist:
                 initial = decklist.read()
             deck = modo.parse_list(j,initial)
