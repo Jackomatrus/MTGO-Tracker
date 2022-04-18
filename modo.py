@@ -223,8 +223,8 @@ def update_game_wins(ad,timeout):
                     i[mw_index] = "P2"
                 elif i[p2_index] == timeout[i[0]]:
                     i[mw_index] = "P1"
-def players(init: Union[str, list[str]]) -> list[str]:
-    """Parses a gamelof for player names.
+def players(game_log: Union[str, list[str]]) -> list[str]:
+    """Parses a gamelog for player names.
 
     Args:
         init (Union[str, list[str]]): The pure game log.
@@ -233,19 +233,18 @@ def players(init: Union[str, list[str]]) -> list[str]:
         list[str]: all player names
     """
 
-    if isinstance(init, str):
-        init = init.split("@P")
-        
-    players = []
-    
-    # Initialize list of players in the game
-    JOIN_MSG = " joined the game"
-    players = [i.split(JOIN_MSG)[0] for i in init if JOIN_MSG in i]
-
-    # Filter duplicates from player list
-    players = list(set(players))
-    players.sort(key=len, reverse=True)
-
+    if isinstance(game_log, str):
+        player_name_re = re.compile( r'@P@P(.+?) joined the game\.')
+        # alternative: r'@P(?!.*?@P.{0,30} join)(.+?) joined the game\.'
+    elif isinstance(game_log, list):
+        game_log = '\n'.join(game_log)
+        player_name_re = re.compile(r'^(.*?) joined the game', re.MULTILINE)
+    else:
+        raise TypeError(f"Expected log as list of strings or string,"
+                        f"got {type(game_log)}")
+    # remove duplicates
+    players = list(set(player_name_re.findall(game_log)))
+    players.sort(key=len, reverse=True) # not sure why sorting
     return players
 
 def alter(player_name: str, original: bool) -> str:
@@ -289,21 +288,21 @@ def closest_list(
     if decks == []:
         return ["Unknown","NA"]
 
-    sim_list = []
+    similarity_list = []
     for i in decks:
         if i == None:
             print("error: Null List")
             continue
 
         if len(i[2]) == 0:
-            sim = 0
+            similarity = 0
         else:
-            sim = len(cards_played.intersection(i[2]))/len(i[2])
-        sim = round((sim * 100),3)
-        sim_list.append(sim)
+            similarity = len(cards_played.intersection(i[2]))/len(i[2])
+        similarity = round((similarity * 100),3)
+        similarity_list.append(similarity)
 
-    index = sim_list.index(max(sim_list))
-    if max(sim_list) > 20:
+    index = similarity_list.index(max(similarity_list))
+    if max(similarity_list) > 20:
         return [decks[index][0],decks[index][1]]
     else:
         return ["Unknown","NA"]
@@ -337,39 +336,33 @@ def get_limited_subarch(cards_played: set[str]) -> Union[str, Literal["NA"]]:
     else:
         return limited_sa
 
-def parse_list(filename,init):
-    # Input:  String,String
-    # Output: [String,String,Set{MaindeckCards+SideboardCards}]
+def parse_list(filename: str, file_content: str) -> tuple[str, str, set[str]]:
+    """Reads out a decklist from strings.
 
-    initial = init.split("\n")
-    d_format = filename.split(".txt")[0].split(" - ")[0]
-    name = filename.split(".txt")[0].split(" - ")[1]
+    Args:
+        filename (str): File name of format "Format - Deckname.txt"
+        file_content (str): Cards in the deck.
+            Sideboard seperated by blank line.
+            Format: \d+ Cardname
+
+    Returns:
+        tuple[str, str, set[str]]: _description_
+    """
+
+    filename_re = re.compile(r'(.+) - (.+)\.txt')
+    deck_format, deck_name = filename_re.findall(filename)[0]
     maindeck = []
     sideboard = []
-    card_count = 0
-    card = ""
-    sb = False
-    
-    if initial[-1] == "":
-        initial.pop()
-    
-    for i in initial:
-        if i == "" and sb == False:
-            sb = True
+    target = maindeck
+
+    for line in file_content.split("\n"):
+        if line == "":
+            # sideboard comes after empty line, everything before is main
+            target = sideboard
         else:
-            try:
-                card_count = int(i.split(" ",1)[0])
-            except ValueError:
-                return None
-            card = i.split(" ",1)[1]
-            while card_count > 0 and sb == False:
-                maindeck.append(card)
-                card_count -= 1
-            while card_count > 0 and sb == True:
-                sideboard.append(card)
-                card_count -= 1
-                
-    return [name,d_format,set(maindeck)]
+            card_count, card = line.split(" ",1)
+            target.extend((card,) * int(card_count))
+    return (deck_name,deck_format,set(maindeck))
 
 def check_timeout(ga: list[str]) -> tuple[bool, Union[Literal[None], str]]:
     """Checks whether a player has timed out in a list of game actions.
@@ -478,6 +471,7 @@ def match_data(ga,gd,pd):
         P1_ROLL =       high_roll(ga)[P1]
         P2_ROLL =       high_roll(ga)[P2]
     except KeyError:
+        print('oh no')
         return "High Rolls not Found."
     P1_WINS =       0
     P2_WINS =       0
