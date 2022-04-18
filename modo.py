@@ -1,7 +1,7 @@
 # MODO GameLog Cleaning Module
 import copy
 from time import strftime, struct_time
-from typing import Literal, Union
+from typing import Literal, Pattern, Union
 import re
 from MODO_DATA import (
     BASIC_LAND_DICT, CARDS_DRAWN_DICT, CONSTRUCTED_FORMATS, CONSTRUCTED_PLAY_TYPES, 
@@ -331,13 +331,26 @@ def get_match_id(game_log: str) -> str:
             f'No match id in passed game log: {game_log}'
         )
 
-def game_actions(game_log: str) -> list[str]:
+def new_turn_regex(players: list[str]) -> re.Pattern:
+    """Creates a regular expression that matches anything that looks like
+        Turn X: PLAYERNAME
+
+    Args:
+        players (list[str]): List of names of players in the game.
+
+    Returns:
+        re.Pattern: The compiled regular expression
+    """
+    escaped_and_altered = [re.escape(alter(player)) for player in players]
+    player_group_string = f"({'|'.join(escaped_and_altered)})"
+    return re.compile(r'Turn \d+: ' + player_group_string)
+
+def all_actions(game_log: str) -> list[str]:
     # Input:  String
     # Output: List[Strings]
-    game_actions = [get_match_id(game_log)]
+    all_action_list = [get_match_id(game_log)]
     players_list = players(game_log)
-    regex_player_list = [re.escape(alter(player)) for player in players_list]
-    turn_header = re.compile(f"Turn \d+: ({'|'.join(regex_player_list)})")
+    turn_header = new_turn_regex(players_list)
     lost_conn = {player: False for player in players_list}
     for player in players_list:
         game_log = game_log.replace(player,alter(player))
@@ -350,20 +363,18 @@ def game_actions(game_log: str) -> list[str]:
         if not game_action:
             continue
         first_word = game_action.split()[0]
-        fullstring = game_action.replace(" (Alt.)", "")
         turn_header_match = turn_header.search(game_action)
-        if " has lost connection to the game" in game_action:
+        if turn_header_match:
+            all_action_list.append(turn_header_match[0])
+        elif " has lost connection to the game" in game_action:
             lost_conn[first_word] = True
         elif " joined the game." in game_action:
             if lost_conn[first_word]:
-                # don't add reconnects
+                # don't append reconnects
                 lost_conn[first_word] = False
             else:
-                # add regular joins
-                game_actions.append(fullstring)
-        # New turn begins.
-        elif turn_header_match:
-            game_actions.append(turn_header_match[0])
+                # append regular joins
+                all_action_list.append(game_action)
         # Skip any of these
         elif any(action in game_action for action in [
             " draws their next card.", # looking at extra cards
@@ -372,18 +383,18 @@ def game_actions(game_log: str) -> list[str]:
         # Skip game state changes.
         elif ('.' not in game_action) and ("is being attacked" not in game_action):
             continue
-        elif ("@[" in fullstring) and ("@]" in fullstring):
+        elif ("@[" in game_action) and ("@]" in game_action):
             # change every @[Cardname@:NUMBERS,NUMBERS:@] to @[Cardname@]
             newstring = re.sub(
                 r"(@\[.+?)(@:\d+?,\d+?:)(@\])", 
                 r'\g<1>\g<3>', # remove group 2
-                fullstring)
+                game_action)
             newstring = newstring.split("(")[0] # not sure why this is here
-            game_actions.append(newstring)
+            all_action_list.append(newstring)
         # Everything else
         elif "." in game_action:
-            game_actions.append(fullstring)
-    return game_actions
+            all_action_list.append(game_action)
+    return all_action_list
 
 def high_roll(game_actions: Union[str, list[str]]) -> dict[str, int]:
     if isinstance(game_actions, str):
@@ -883,14 +894,16 @@ def get_all_data(game_log: str, file_last_modified: struct_time):
     # Input:  String,String
     # Output: List[Matches,Games,Plays]
     
-    gameactions = game_actions(game_log)
-    gamedata = game_data(gameactions)
+    match_actions = all_actions(game_log)
+    # old match id was just the last modified time. Now using ingame ID
+    # gameactions.insert(0, strftime(r'%Y%m%d%H%M', file_last_modified))
+    gamedata = game_data(match_actions)
     if isinstance(gamedata, str):
         return gamedata
-    playdata = play_data(gameactions)
-    matchdata = match_data(gameactions,gamedata[0],playdata)
+    playdata = play_data(match_actions)
+    matchdata = match_data(match_actions,gamedata[0],playdata)
     if isinstance(matchdata, str):
         return matchdata
-    timeout = check_timeout(gameactions)
+    timeout = check_timeout(match_actions)
 
     return [matchdata,gamedata[0],playdata,gamedata[1],timeout]
