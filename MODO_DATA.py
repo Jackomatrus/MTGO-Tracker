@@ -423,3 +423,12 @@ BASIC_LAND_DICT = {
     'Mountain': 'R',
     'Forest': 'G'
 }
+
+COMMON_WORDS = [
+    'untap',
+    'game',
+    'attacked',
+    'ability',
+    'draw',
+    'library'
+]
