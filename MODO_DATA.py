@@ -316,3 +316,102 @@ ARCHETYPES = [
     ]
 
 CARDS_DRAWN_DICT = {"zero":0,"a":1,"two":2,"three":3,"four":4,"five":5,"six":6,"seven":7}
+
+MATCHES_HEADER = [
+    "Match_ID",
+    "Draft_ID",
+    "P1",
+    "P1_Arch",
+    "P1_Subarch",
+    "P2",
+    "P2_Arch",
+    "P2_Subarch",
+    "P1_Roll",
+    "P2_Roll",
+    "Roll_Winner",
+    "P1_Wins",
+    "P2_Wins",
+    "Match_Winner",
+    "Format",
+    "Limited_Format",
+    "Match_Type",
+    "Date"
+    ]
+
+PLAYS_HEADER = [
+    "Match_ID",
+    "Game_Num",
+    "Play_Num",
+    "Turn_Num",
+    "Casting_Player",
+    "Action",
+    "Primary_Card",
+    "Target1",
+    "Target2",
+    "Target3",
+    "Opp_Target",
+    "Self_Target",
+    "Cards_Drawn",
+    "Attackers",
+    "Active_Player",
+    "Nonactive_Player"
+    ]
+
+DRAFT_HEADER = [
+    "Draft_ID",
+    "Hero",
+    "Player_2",
+    "Player_3",
+    "Player_4",
+    "Player_5",
+    "Player_6",
+    "Player_7",
+    "Player_8",
+    "Match_Wins",
+    "Match_Losses",
+    "Format",
+    "Date"]
+
+PICK_HEADER = [
+    "Draft_ID",
+    "Card",
+    "Pack_Num",
+    "Pick_Num",
+    "Pick_Ovr",
+    "Avail_1",
+    "Avail_2",
+    "Avail_3",
+    "Avail_4",
+    "Avail_5",
+    "Avail_6",
+    "Avail_7",
+    "Avail_8",
+    "Avail_9",
+    "Avail_10",
+    "Avail_11",
+    "Avail_12",
+    "Avail_13",
+    "Avail_14"
+    ]
+
+GAME_HEADER = [
+    "Match_ID",
+    "P1",
+    "P2",
+    "Game_Num",
+    "PD_Selector",
+    "PD_Choice",
+    "On_Play",
+    "On_Draw",
+    "P1_Mulls",
+    "P2_Mulls",
+    "Turns",
+    "Game_Winner"]
+
+HEADERS = {
+    'Picks': PICK_HEADER,
+    'Drafts': DRAFT_HEADER,
+    'Plays': PLAYS_HEADER,
+    'Games': GAME_HEADER,
+    'Matches': MATCHES_HEADER
+}

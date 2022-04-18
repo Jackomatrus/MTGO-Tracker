@@ -19,7 +19,7 @@ import pickle
 import shutil
 from MODO_DATA import (
     CARDS_DRAWN_DICT, CONSTRUCTED_FORMATS, CONSTRUCTED_PLAY_TYPES, 
-    CUBE_FORMATS, DRAFT_FORMATS, DRAFT_PLAY_TYPES, LIMITED_FORMATS, 
+    CUBE_FORMATS, DRAFT_FORMATS, DRAFT_PLAY_TYPES, LIMITED_FORMATS, HEADERS,
     ADVENTURE_CARDS, SEALED_FORMATS, SEALED_PLAY_TYPES, SPLIT_CARDS, MULL_DICT
     )
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
@@ -571,21 +571,21 @@ def set_display(d,update_status,start_index,reset):
         if resize:
             if MAIN_WINDOW_SIZE[0] == "large":
                 window.geometry("1740x" + str(MAIN_WINDOW_SIZE[2]))
-        print_data(ALL_DATA[0],modo.header(display),update_status,start_index,apply_filter=True)
+        print_data(ALL_DATA[0],HEADERS[display],update_status,start_index,apply_filter=True)
     elif d == "Games":
         if resize:
             if MAIN_WINDOW_SIZE[0] == "large":
                 window.geometry("1315x" + str(MAIN_WINDOW_SIZE[2]))
-        print_data(ALL_DATA[1],modo.header(display),update_status,start_index,apply_filter=True)
+        print_data(ALL_DATA[1],HEADERS[display],update_status,start_index,apply_filter=True)
     elif d == "Plays":
         if resize:
             if MAIN_WINDOW_SIZE[0] == "large":
                 window.geometry("1665x" + str(MAIN_WINDOW_SIZE[2]))
-        print_data(ALL_DATA[2],modo.header(display),update_status,start_index,apply_filter=True)
+        print_data(ALL_DATA[2],HEADERS[display],update_status,start_index,apply_filter=True)
     elif d == "Drafts":
-        print_data(DRAFTS_TABLE,modo.header(display),update_status,start_index,apply_filter=True)
+        print_data(DRAFTS_TABLE,HEADERS[display],update_status,start_index,apply_filter=True)
     elif d == "Picks":
-        print_data(PICKS_TABLE,modo.header(display),update_status,start_index,apply_filter=True)
+        print_data(PICKS_TABLE,HEADERS[display],update_status,start_index,apply_filter=True)
     revise_button["state"] = tk.DISABLED
     remove_button["state"] = tk.DISABLED
 def get_all_data(fp_logs,fp_drafts,copy):
@@ -1468,18 +1468,18 @@ def back():
     global display_index
     display_index -= ln_per_page
     if (display == "Drafts") or (display == "Picks"):
-        print_data(curr_data,headers=modo.header(display),update_status=True,start_index=display_index,apply_filter=False)
+        print_data(curr_data,headers=HEADERS[display],update_status=True,start_index=display_index,apply_filter=False)
     else:
-        print_data(curr_data,headers=modo.header(display),update_status=True,start_index=display_index,apply_filter=False)
+        print_data(curr_data,headers=HEADERS[display],update_status=True,start_index=display_index,apply_filter=False)
     revise_button["state"] = tk.DISABLED
     remove_button["state"] = tk.DISABLED
 def next_page():
     global display_index
     display_index += ln_per_page
     if (display == "Drafts") or (display == "Picks"):
-        print_data(curr_data,headers=modo.header(display),update_status=True,start_index=display_index,apply_filter=False)
+        print_data(curr_data,headers=HEADERS[display],update_status=True,start_index=display_index,apply_filter=False)
     else:
-        print_data(curr_data,headers=modo.header(display),update_status=True,start_index=display_index,apply_filter=False)
+        print_data(curr_data,headers=HEADERS[display],update_status=True,start_index=display_index,apply_filter=False)
     revise_button["state"] = tk.DISABLED
     remove_button["state"] = tk.DISABLED
 def export2(current=False,matches=False,games=False,plays=False,drafts=False,picks=False,_csv=False,_excel=False,inverted=False,filtered=False):
@@ -1498,27 +1498,27 @@ def export2(current=False,matches=False,games=False,plays=False,drafts=False,pic
     if current:
         file_names.append("Current")
         if (display == "Drafts") or (display == "Picks"):
-            header_list.append(modo.header(display))
+            header_list.append(HEADERS[display])
         else:
-            header_list.append(modo.header(display))
+            header_list.append(HEADERS[display])
         if display == "Matches":
             if ((HERO != "") & (filtered)):
-                df = pd.DataFrame(ALL_DATA_INVERTED[0],columns=modo.header(display))
+                df = pd.DataFrame(ALL_DATA_INVERTED[0],columns=HEADERS[display])
                 df = df[(df.P1 == HERO)]
             else:
-                df = pd.DataFrame(ALL_DATA[0],columns=modo.header(display))
+                df = pd.DataFrame(ALL_DATA[0],columns=HEADERS[display])
         elif display == "Games":
             if ((HERO != "") & (filtered)):
-                df = pd.DataFrame(ALL_DATA_INVERTED[1],columns=modo.header(display))
+                df = pd.DataFrame(ALL_DATA_INVERTED[1],columns=HEADERS[display])
                 df = df[(df.P1 == HERO)]
             else:
-                df = pd.DataFrame(ALL_DATA[1],columns=modo.header(display))            
+                df = pd.DataFrame(ALL_DATA[1],columns=HEADERS[display])            
         elif display == "Plays":
-            df = pd.DataFrame(ALL_DATA[2],columns=modo.header(display))
+            df = pd.DataFrame(ALL_DATA[2],columns=HEADERS[display])
         elif display == "Drafts":
-            df = pd.DataFrame(DRAFTS_TABLE,columns=modo.header(display))
+            df = pd.DataFrame(DRAFTS_TABLE,columns=HEADERS[display])
         elif display == "Picks":
-            df = pd.DataFrame(PICKS_TABLE,columns=modo.header(display))
+            df = pd.DataFrame(PICKS_TABLE,columns=HEADERS[display])
         data_to_write.append(df)
     if matches:
         file_names.append("Matches")
@@ -1913,9 +1913,9 @@ def set_filter():
     width =  550
 
     if (display == "Drafts") or (display == "Picks"):
-        print_data(data=None,headers=modo.header(display),update_status=False,start_index=0,apply_filter=False)
+        print_data(data=None,headers=HEADERS[display],update_status=False,start_index=0,apply_filter=False)
     else:
-        print_data(data=None,headers=modo.header(display),update_status=False,start_index=0,apply_filter=False)
+        print_data(data=None,headers=HEADERS[display],update_status=False,start_index=0,apply_filter=False)
     update_status_bar(status=f"Applying Filters to {display} Table.")
 
     filter_window = tk.Toplevel(window)
@@ -2040,29 +2040,29 @@ def set_filter():
     # Building dataframe (unfiltered) to give us our dropdown options.
     if HERO == "":
         if display == "Matches":
-            df = pd.DataFrame(ALL_DATA[0],columns=modo.header(display))
+            df = pd.DataFrame(ALL_DATA[0],columns=HEADERS[display])
         elif display == "Games":
-            df = pd.DataFrame(ALL_DATA[1],columns=modo.header(display))
+            df = pd.DataFrame(ALL_DATA[1],columns=HEADERS[display])
         elif display == "Plays":
-            df = pd.DataFrame(ALL_DATA[2],columns=modo.header(display))
+            df = pd.DataFrame(ALL_DATA[2],columns=HEADERS[display])
     else:
         if display == "Matches":
-            df = pd.DataFrame(ALL_DATA_INVERTED[0],columns=modo.header(display))
+            df = pd.DataFrame(ALL_DATA_INVERTED[0],columns=HEADERS[display])
             df = df[(df.P1 == HERO)]
         elif display == "Games":
-            df = pd.DataFrame(ALL_DATA_INVERTED[1],columns=modo.header(display))
+            df = pd.DataFrame(ALL_DATA_INVERTED[1],columns=HEADERS[display])
             df = df[(df.P1 == HERO)]
         elif display == "Plays":
-            df = pd.DataFrame(ALL_DATA_INVERTED[2],columns=modo.header(display))
+            df = pd.DataFrame(ALL_DATA_INVERTED[2],columns=HEADERS[display])
     if display == "Drafts":
-        df = pd.DataFrame(DRAFTS_TABLE,columns=modo.header(display))
+        df = pd.DataFrame(DRAFTS_TABLE,columns=HEADERS[display])
     elif display == "Picks":
-        df = pd.DataFrame(PICKS_TABLE,columns=modo.header(display))
+        df = pd.DataFrame(PICKS_TABLE,columns=HEADERS[display])
 
     if (display == "Drafts") or (display == "Picks"):
-        col_options = modo.header(display).copy()
+        col_options = HEADERS[display].copy()
     else:
-        col_options = modo.header(display).copy()
+        col_options = HEADERS[display].copy()
     col_options.pop(0)
     
     col = tk.StringVar()
@@ -2194,8 +2194,8 @@ def revise_record3():
     values = list(tree1.item(selected,"values"))
     sel_matchid = values[0]
 
-    match_wins_index = modo.header(display).index("Match_Wins")
-    match_losses_index = modo.header(display).index("Match_Losses")
+    match_wins_index = HEADERS[display].index("Match_Wins")
+    match_losses_index = HEADERS[display].index("Match_Losses")
 
     df = pd.DataFrame(PICKS_TABLE,columns=modo.header("Picks"))
     df = df[(df.Draft_ID == values[0])]

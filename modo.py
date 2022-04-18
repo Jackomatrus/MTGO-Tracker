@@ -40,7 +40,7 @@ def clean_card_set(card_set: set[str]) -> set[str]:
 
 def header(table):
     # Output: List[Play_Attributes]
-
+    #TODO delete this
     if table == "Matches":
         return ["Match_ID",
                 "Draft_ID",
