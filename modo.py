@@ -432,9 +432,6 @@ def match_data(ga,gd,pd):
     MATCH_ID =      f"{ga[0]}_{P1}_{P2}"
     DRAFT_ID =      "NA"
 
-    player_count =  len(players(ga))
-    prev_string =   ""
-
     if P1_ROLL > P2_ROLL:
         ROLL_WINNER = "P1"
     else:
@@ -491,7 +488,6 @@ def get_winner(curr_game_list: list[str], p1: str, p2: str
     )
     for loss_reason in LOSE_SENTENCES:
         for action in curr_game_list:
-            # concession
             if loss_reason in action:
                 if action.startswith(p1):
                     return "P2"
@@ -525,158 +521,98 @@ def get_winner(curr_game_list: list[str], p1: str, p2: str
         return "NA"
 
 
-def game_data(ga):
+def game_data(match_actions: list[str]):
     # Input:  List[GameActions]
     # Output: List[G1_List,G2_List,G3_List,NA_Games_Dict{}]
 
-    GAME_DATA =     []
-    G1 =            []
-    G2 =            []
-    G3 =            []    
-    ALL_GAMES_GA =  {}
+    G1 = []
+    G2 = []
+    G3 = []
+    GAME_DATA = [G1, G2, G3]
+    ALL_GAMES_GA = {}
 
-    GAME_NUM =      0
-    PD_SELECTOR =   ""
-    PD_CHOICE =     ""
-    ON_PLAY =       ""
-    ON_DRAW =       ""
-    P1_MULLS =      0
-    P2_MULLS =      0
-    TURNS =         0
-    GAME_WINNER =   ""
+    GAME_NUM = 0
+    PD_SELECTOR = ""
+    PD_CHOICE = ""
+    ON_PLAY = ""
+    ON_DRAW = ""
+    P1_MULLS = 0
+    P2_MULLS = 0
+    TURNS = 0
+    GAME_WINNER = ""
 
     try:
-        P1 =            players(ga)[0]
-        P2 =            players(ga)[1]
-    except IndexError:
+        P1, P2 = players(match_actions)[0:2]
+    except ValueError:
         return "Players not Found."
     curr_game_list =[]
-    player_count =  len(players(ga))
-    prev_string =   ""
-    curr_list =     []
-    MATCH_ID = f"{ga[0]}_{P1}_{P2}"
+    initial_player_count = join_countdown = len(players(match_actions))
+    MATCH_ID = f"{match_actions[0]}_{P1}_{P2}"
 
-    for i in ga:
-        curr_list = i.split()
-        if "joined the game" in i:
-            if player_count == 0:
-                # New Game
-                player_count = len(players(ga)) - 1
-                GAME_WINNER = get_winner(curr_game_list,P1,P2)
+    for action in match_actions:
+        current_action_list = action.split()
+        # all players joining indicate a break between games
+        if "joined the game" in action:
+            if join_countdown == 0:
+                # New Game, reset countdown
+                join_countdown = initial_player_count
+                join_countdown -= 1
+                GAME_WINNER = get_winner(curr_game_list, P1, P2)
                 if GAME_WINNER == "NA":
                     ALL_GAMES_GA[f"{MATCH_ID}-{GAME_NUM}"] = curr_game_list
-                if GAME_NUM == 1:
-                    G1.extend((
-                        MATCH_ID,
-                        alter(P1,original=True),
-                        alter(P2,original=True),
-                        GAME_NUM,
-                        PD_SELECTOR,
-                        PD_CHOICE,
-                        ON_PLAY,
-                        ON_DRAW,
-                        P1_MULLS,
-                        P2_MULLS,
-                        TURNS,
-                        GAME_WINNER))
-                    GAME_DATA.append(G1)
-                elif GAME_NUM == 2:
-                    G2.extend((
-                        MATCH_ID,
-                        alter(P1,original=True),
-                        alter(P2,original=True),
-                        GAME_NUM,
-                        PD_SELECTOR,
-                        PD_CHOICE,
-                        ON_PLAY,
-                        ON_DRAW,
-                        P1_MULLS,
-                        P2_MULLS,
-                        TURNS,
-                        GAME_WINNER))
-                    GAME_DATA.append(G2)
+                GAME_DATA[GAME_NUM - 1].extend((
+                    MATCH_ID,
+                    alter(P1,original=True),
+                    alter(P2,original=True),
+                    GAME_NUM,
+                    PD_SELECTOR,
+                    PD_CHOICE,
+                    ON_PLAY,
+                    ON_DRAW,
+                    P1_MULLS,
+                    P2_MULLS,
+                    TURNS,
+                    GAME_WINNER))
                 curr_game_list = []
             else:
-                player_count -= 1
-        elif "chooses to play first" in i or "chooses to not play first" in i:
+                join_countdown -= 1
+        elif "chooses to" in action and "play first" in action:
             GAME_NUM += 1
-            if curr_list[0] == P1:
-                PD_SELECTOR = "P1"
+            PD_SELECTOR = "P1" if current_action_list[0] == P1 else 'P2'
+            PD_CHOICE = "Play" if current_action_list[3] == "play" else 'Draw'
+            if PD_CHOICE == "Play":
+                ON_PLAY = PD_SELECTOR
+                ON_DRAW = "P2" if PD_SELECTOR == 'P1' else 'P1'
             else:
-                PD_SELECTOR = "P2"
-            if curr_list[3] == "play":
-                PD_CHOICE = "Play"
-            else:
-                PD_CHOICE = "Draw"
-            if PD_SELECTOR == "P1" and PD_CHOICE == "Play":
-                ON_PLAY = "P1"
-                ON_DRAW = "P2"
-            elif PD_SELECTOR == "P2" and PD_CHOICE == "Play":
-                ON_PLAY = "P2"
-                ON_DRAW = "P1"
-            elif PD_SELECTOR == "P1" and PD_CHOICE == "Draw":
-                ON_PLAY = "P2"
-                ON_DRAW = "P1"
-            elif PD_SELECTOR == "P2" and PD_CHOICE == "Draw":
-                ON_PLAY = "P1"
-                ON_DRAW = "P2"
-        elif "begins the game with" in i and "cards in hand" in i:
-            if P1 == curr_list[0]:              
-                P1_MULLS = MULL_DICT[i.split(" begins the game with ")[1].split()[0]]
-            elif P2 == curr_list[0]:
-                P2_MULLS = MULL_DICT[i.split(" begins the game with ")[1].split()[0]]
-        elif "Turn " in i and len(curr_list) == 3:
-            TURNS = int(curr_list[1].split(":")[0])
-        curr_game_list.append(i)
+                ON_PLAY = "P2" if PD_SELECTOR == 'P1' else 'P1'
+                ON_DRAW = PD_SELECTOR
+        elif "begins the game with" in action and "cards in hand" in action:
+            if P1 == current_action_list[0]:
+                P1_MULLS = MULL_DICT[action.split(" begins the game with ")[1].split()[0]]
+            elif P2 == current_action_list[0]:
+                P2_MULLS = MULL_DICT[action.split(" begins the game with ")[1].split()[0]]
+        elif "Turn " in action and len(current_action_list) == 3:
+            TURNS = int(current_action_list[1].split(":")[0])
+        curr_game_list.append(action)
     GAME_WINNER = get_winner(curr_game_list,P1,P2)
     if GAME_WINNER == "NA":
         ALL_GAMES_GA[f"{MATCH_ID}-{GAME_NUM}"] = curr_game_list
-    if GAME_NUM == 1:
-        G1.extend((
-            MATCH_ID,
-            alter(P1,original=True),
-            alter(P2,original=True),
-            GAME_NUM,
-            PD_SELECTOR,
-            PD_CHOICE,
-            ON_PLAY,
-            ON_DRAW,
-            P1_MULLS,
-            P2_MULLS,
-            TURNS,
-            GAME_WINNER))
-        GAME_DATA.append(G1)
-    elif GAME_NUM == 2:
-        G2.extend((
-            MATCH_ID,
-            alter(P1,original=True),
-            alter(P2,original=True),
-            GAME_NUM,
-            PD_SELECTOR,
-            PD_CHOICE,
-            ON_PLAY,
-            ON_DRAW,
-            P1_MULLS,
-            P2_MULLS,
-            TURNS,
-            GAME_WINNER))
-        GAME_DATA.append(G2)
-    elif GAME_NUM == 3:
-        G3.extend((
-            MATCH_ID,
-            alter(P1,original=True),
-            alter(P2,original=True),
-            GAME_NUM,
-            PD_SELECTOR,
-            PD_CHOICE,
-            ON_PLAY,
-            ON_DRAW,
-            P1_MULLS,
-            P2_MULLS,
-            TURNS,
-            GAME_WINNER))
-        GAME_DATA.append(G3)
-    return (GAME_DATA,ALL_GAMES_GA)
+    # GAME NUM - 1 cause lists start at index 0
+    GAME_DATA[GAME_NUM - 1].extend((
+        MATCH_ID,
+        alter(P1,original=True),
+        alter(P2,original=True),
+        GAME_NUM,
+        PD_SELECTOR,
+        PD_CHOICE,
+        ON_PLAY,
+        ON_DRAW,
+        P1_MULLS,
+        P2_MULLS,
+        TURNS,
+        GAME_WINNER))
+    GAME_DATA = [game for game in GAME_DATA if game]
+    return (GAME_DATA, ALL_GAMES_GA)
 
 def is_play(play: str) -> bool:
     action_keywords = ["plays","casts","draws","chooses","discards"]
