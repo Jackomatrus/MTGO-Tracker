@@ -415,3 +415,11 @@ HEADERS = {
     'Games': GAME_HEADER,
     'Matches': MATCHES_HEADER
 }
+
+BASIC_LAND_DICT = {
+    'Plains': 'W',
+    'Island': 'U',
+    'Swamp': 'B',
+    'Mountain': 'R',
+    'Forest': 'G'
+}

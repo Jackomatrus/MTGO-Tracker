@@ -4,13 +4,13 @@ from time import strftime, struct_time
 from typing import Literal, Union
 import re
 from MODO_DATA import (
-    CARDS_DRAWN_DICT, CONSTRUCTED_FORMATS, CONSTRUCTED_PLAY_TYPES, 
-    CUBE_FORMATS, DRAFT_FORMATS, DRAFT_PLAY_TYPES, LIMITED_FORMATS, 
+    BASIC_LAND_DICT, CARDS_DRAWN_DICT, CONSTRUCTED_FORMATS, CONSTRUCTED_PLAY_TYPES, 
+    CUBE_FORMATS, DRAFT_FORMATS, DRAFT_PLAY_TYPES, LIMITED_FORMATS, HEADERS,
     ADVENTURE_CARDS, SEALED_FORMATS, SEALED_PLAY_TYPES, SPLIT_CARDS, MULL_DICT
     )
 
 # To add a column to a database:
-# Add the column to modo.header() function.
+# Add the column to MODO_DATA.HEADERS dict.
 # Add the column to appropriate modo.XXXX_data() function.
 # Any saved data will have to be deleted and reloaded.
 
@@ -38,94 +38,6 @@ def clean_card_set(card_set: set[str]) -> set[str]:
             card_set.remove(i)
     return card_set
 
-def header(table):
-    # Output: List[Play_Attributes]
-    #TODO delete this
-    if table == "Matches":
-        return ["Match_ID",
-                "Draft_ID",
-                "P1",
-                "P1_Arch",
-                "P1_Subarch",
-                "P2",
-                "P2_Arch",
-                "P2_Subarch",
-                "P1_Roll",
-                "P2_Roll",
-                "Roll_Winner",
-                "P1_Wins",
-                "P2_Wins",
-                "Match_Winner",
-                "Format",
-                "Limited_Format",
-                "Match_Type",
-                "Date"]
-    elif table == "Games":
-        return ["Match_ID",
-                "P1",
-                "P2",
-                "Game_Num",
-                "PD_Selector",
-                "PD_Choice",
-                "On_Play",
-                "On_Draw",
-                "P1_Mulls",
-                "P2_Mulls",
-                "Turns",
-                "Game_Winner"]
-    elif table == "Plays":
-        return ["Match_ID",
-                "Game_Num",
-                "Play_Num",
-                "Turn_Num",\
-                "Casting_Player",
-                "Action",
-                "Primary_Card",
-                "Target1",
-                "Target2",
-                "Target3",
-                "Opp_Target",
-                "Self_Target",
-                "Cards_Drawn",
-                "Attackers",
-                "Active_Player",
-                "Nonactive_Player"]
-    elif table == "Drafts":
-        return ["Draft_ID",
-                "Hero",
-                "Player_2",
-                "Player_3",
-                "Player_4",
-                "Player_5",
-                "Player_6",
-                "Player_7",
-                "Player_8",
-                "Match_Wins",
-                "Match_Losses",
-                "Format",
-                "Date"]
-    elif table == "Picks":
-        return ["Draft_ID",
-                "Card",
-                "Pack_Num",
-                "Pick_Num",
-                "Pick_Ovr",
-                "Avail_1",
-                "Avail_2",
-                "Avail_3",
-                "Avail_4",
-                "Avail_5",
-                "Avail_6",
-                "Avail_7",
-                "Avail_8",
-                "Avail_9",
-                "Avail_10",
-                "Avail_11",
-                "Avail_12",
-                "Avail_13",
-                "Avail_14"]
-    return []
-
 def invert_join(ad):
     # Input:  List[List[Matches],List[Games],List[Plays]]
     # Output: List[List[Matches],List[Games],List[Plays]]
@@ -146,15 +58,15 @@ def invert_join(ad):
         # Input:  List[Matches]
         # Output: List[Matches]
 
-        swap_cols(data,header("Matches"),"P1","P2")
-        swap_cols(data,header("Matches"),"P1_Arch","P2_Arch")
-        swap_cols(data,header("Matches"),"P1_Subarch","P2_Subarch")
-        swap_cols(data,header("Matches"),"P1_Roll","P2_Roll")
-        swap_cols(data,header("Matches"),"P1_Wins","P2_Wins")
+        swap_cols(data,HEADERS['Matches'],"P1","P2")
+        swap_cols(data,HEADERS['Matches'],"P1_Arch","P2_Arch")
+        swap_cols(data,HEADERS['Matches'],"P1_Subarch","P2_Subarch")
+        swap_cols(data,HEADERS['Matches'],"P1_Roll","P2_Roll")
+        swap_cols(data,HEADERS['Matches'],"P1_Wins","P2_Wins")
 
         cols_to_invert = ["Match_Winner","Roll_Winner"]
         for i in cols_to_invert:
-            for index,j in enumerate(header("Matches")):
+            for index,j in enumerate(HEADERS['Matches']):
                 if j == i:
                     a = index
             if data[a] == "P1":
@@ -166,13 +78,13 @@ def invert_join(ad):
         # Input:  List[Games]
         # Output: List[Games]
 
-        swap_cols(data,header("Games"),"P1","P2")
-        swap_cols(data,header("Games"),"P1_Mulls","P2_Mulls")
-        swap_cols(data,header("Games"),"On_Play","On_Draw")
+        swap_cols(data,HEADERS["Games"],"P1","P2")
+        swap_cols(data,HEADERS["Games"],"P1_Mulls","P2_Mulls")
+        swap_cols(data,HEADERS["Games"],"On_Play","On_Draw")
         
         cols_to_invert = ["PD_Selector","Game_Winner"]
         for i in cols_to_invert:
-            for index,j in enumerate(header("Games")):
+            for index,j in enumerate(HEADERS["Games"]):
                 if j == i:
                     a = index
             if data[a] == "P1":
@@ -194,12 +106,12 @@ def update_game_wins(ad,timeout):
     #Input:  List[Matches,Games,Plays]
     #Output: List[Matches,Games,Plays]
     
-    p1_index = header("Matches").index("P1")
-    p2_index = header("Matches").index("P2")
-    p1wins_index = header("Matches").index("P1_Wins")
-    p2wins_index = header("Matches").index("P2_Wins")
-    mw_index = header("Matches").index("Match_Winner")
-    gw_index = header("Games").index("Game_Winner")
+    p1_index = HEADERS['Matches'].index("P1")
+    p2_index = HEADERS['Matches'].index("P2")
+    p1wins_index = HEADERS['Matches'].index("P1_Wins")
+    p2wins_index = HEADERS['Matches'].index("P2_Wins")
+    mw_index = HEADERS['Matches'].index("Match_Winner")
+    gw_index = HEADERS["Games"].index("Game_Winner")
 
     for i in ad[0]: # Iterate through Matches.
         i[p1wins_index] = 0
@@ -249,12 +161,13 @@ def players(game_log: Union[str, list[str]]) -> list[str]:
 
 def alter(player_name: str, original: bool) -> str:
     """If original: replaces + -> " " and * -> .
-    Otherwise reverses these operations. Used to prevent errors with str.split
+        Otherwise reverses these operations.
+        Used to prevent errors with str.split during parsing.
 
     Args:
         player_name (str): The player name
         original (bool): Set to True if you need the real name.
-            Set to False if you need a prettyfied name for python.
+            Set to False if you need a prettyfied name for parsing.
 
     Returns:
         str: Replaced string
@@ -316,25 +229,14 @@ def get_limited_subarch(cards_played: set[str]) -> Union[str, Literal["NA"]]:
         str: A slice of "WUBRG" or "NA"
     """
 
-    wubrg = ["","","","",""]
-
-    for card in cards_played:
-        if card == "Plains":
-            wubrg[0] = "W"
-        elif card == "Island":
-            wubrg[1] = "U"
-        elif card == "Swamp":
-            wubrg[2] = "B"
-        elif card == "Mountain":
-            wubrg[3] = "R"
-        elif card == "Forest":
-            wubrg[4] = "G"
-
-    limited_sa = wubrg[0] + wubrg[1] + wubrg[2] + wubrg[3] + wubrg[4]
-    if limited_sa == "":
+    sub_archetype = ''
+    for basic, color in BASIC_LAND_DICT.items():
+        if basic in cards_played:
+            sub_archetype += color
+    if not sub_archetype:
         return "NA"
     else:
-        return limited_sa
+        return sub_archetype
 
 def parse_list(filename: str, file_content: str) -> tuple[str, str, set[str]]:
     """Reads out a decklist from strings.
@@ -492,9 +394,9 @@ def match_data(ga,gd,pd):
         ROLL_WINNER = "P2"
     
     for i in gd:
-        if i[0] == MATCH_ID and i[header("Games").index("Game_Winner")] == "P1":
+        if i[0] == MATCH_ID and i[HEADERS["Games"].index("Game_Winner")] == "P1":
             P1_WINS += 1
-        elif i[0] == MATCH_ID and i[header("Games").index("Game_Winner")] == "P2":
+        elif i[0] == MATCH_ID and i[HEADERS["Games"].index("Game_Winner")] == "P2":
             P2_WINS += 1
 
     if P1_WINS > P2_WINS:
