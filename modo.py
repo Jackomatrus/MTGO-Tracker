@@ -6,7 +6,7 @@ import re
 from MODO_DATA import (
     BASIC_LAND_DICT, CARDS_DRAWN_DICT, CONSTRUCTED_FORMATS, CONSTRUCTED_PLAY_TYPES, 
     CUBE_FORMATS, DRAFT_FORMATS, DRAFT_PLAY_TYPES, LIMITED_FORMATS, HEADERS,
-    ADVENTURE_CARDS, SEALED_FORMATS, SEALED_PLAY_TYPES, SPLIT_CARDS, MULL_DICT
+    ADVENTURE_CARDS, COMMON_WORDS, SEALED_FORMATS, SEALED_PLAY_TYPES, SPLIT_CARDS, MULL_DICT
     )
 
 # To add a column to a database:
@@ -159,7 +159,7 @@ def players(game_log: Union[str, list[str]]) -> list[str]:
     players.sort(key=len, reverse=True) # not sure why sorting
     return players
 
-def alter(player_name: str, original: bool) -> str:
+def alter(player_name: str, original: bool=False) -> str:
     """If original: replaces + -> " " and * -> .
         Otherwise reverses these operations.
         Used to prevent errors with str.split during parsing.
@@ -167,7 +167,7 @@ def alter(player_name: str, original: bool) -> str:
     Args:
         player_name (str): The player name
         original (bool): Set to True if you need the real name.
-            Set to False if you need a prettyfied name for parsing.
+            Defaults to False to get a prettyfied name for parsing.
 
     Returns:
         str: Replaced string
@@ -228,8 +228,8 @@ def get_limited_subarch(cards_played: set[str]) -> Union[str, Literal["NA"]]:
     Returns:
         str: A slice of "WUBRG" or "NA"
     """
-
     sub_archetype = ''
+    # always returns in  WUBRG order because dicts are ordered as Python3.6
     for basic, color in BASIC_LAND_DICT.items():
         if basic in cards_played:
             sub_archetype += color
@@ -260,13 +260,15 @@ def parse_list(filename: str, file_content: str) -> tuple[str, str, set[str]]:
     for line in file_content.split("\n"):
         if line == "":
             # sideboard comes after empty line, everything before is main
+            # this works because list is mutable
             target = sideboard
         else:
             card_count, card = line.split(" ",1)
             target.extend((card,) * int(card_count))
     return (deck_name,deck_format,set(maindeck))
 
-def check_timeout(ga: list[str]) -> tuple[bool, Union[Literal[None], str]]:
+def check_timeout(
+    game_actions: list[str]) -> tuple[bool, Union[Literal[None], str]]:
     """Checks whether a player has timed out in a list of game actions.
 
     Args:
@@ -277,58 +279,101 @@ def check_timeout(ga: list[str]) -> tuple[bool, Union[Literal[None], str]]:
         Boolean value is whether someone timed out.
         If someone timed out, string is the players name.
     """
-    for i in ga:
-        if " has lost the game due to disconnection" in i:
-            return (True,i.split(" has lost the game due to disconnection")[0])
-        # added timeout without disconnect
-        elif " has run out of time and has lost the match" in i:
-            return (True,i.split(" has run out of time and has lost the match")[0])
+    for action in game_actions:
+        for reason in [
+        " has lost the game due to disconnection",
+        " has run out of time and has lost the match"]:
+            if reason in action:
+                player_name = action.split(reason)[0]
+                return (True, player_name)
     return (False,None)
 
-def game_actions(game_log: str, file_modified_time: struct_time) -> list[str]:
-    # Input:  String,String
-    # Output: List[Strings]
-    game_actions = []
-    players_list = players(game_log)
-    lost_conn = False
-    turn_header = re.compile(r"Turn \d+: ")
+def remove_text_artifacts(game_action: str) -> str:
+    """Tries to remove all text artifacts from the end of a string.
 
-    for i in players_list:
-        game_log = game_log.replace(i,alter(i,original=False))
-    # skip all text up to first @P
-    game_log_list = game_log.split("@P")[1:]
-    game_actions.append(strftime(r'%Y%m%d%H%M', file_modified_time))
-    for i in game_log_list:
-        fullstring = i.replace(" (Alt.)", "")
-        fullstring = fullstring.split(".")[0]
-        # Player joined game header.
-        if " has lost connection to the game" in i:
-            lost_conn = True
-        elif " joined the game." in i:
-            if lost_conn:
-                lost_conn = False
+    Args:
+        game_action (str): A game action string with artifacts at the end.
+
+    Raises:
+        ValueError: Only pass strings that you know to have artifacts.
+
+    Returns:
+        str: Same string but without the artifacts at the end.
+            0.1% of the time there might remain a second '.' at the end.
+    """
+    # failsafe not to delete good data
+    for word in COMMON_WORDS:
+        if word in game_action[-10:]:
+            raise ValueError('Expected string with text artifacts, got '
+                f'"{game_action}"')
+    # artifacts are at least 10 characters long
+    game_action = game_action[:-10]
+    # sometimes they're longer, try to catch
+    if '.' in game_action[-4:-1]:
+        game_action = game_action.rsplit('.', 1)[0]
+    return game_action
+
+def get_match_id(game_log: str) -> str:
+    """Extracts the match ID at the start of the game log.
+        Match ids are started with $ and are 36 characters long.
+
+    Args:
+        game_log (str): String containing a match id as present in game logs.
+
+    Returns:
+        str: The match id without the $ sign.
+    """
+    match_id_re = re.compile(r'\$([0-9a-zA-Z-]{36}).{1,2}\$\1')
+    try:
+        return match_id_re.findall(game_log)[0]
+    except IndexError:
+        raise ValueError(
+            f'No match id in passed game log: {game_log}'
+        )
+
+def game_actions(game_log: str) -> list[str]:
+    # Input:  String
+    # Output: List[Strings]
+    game_actions = [get_match_id(game_log)]
+    players_list = players(game_log)
+    regex_player_list = [re.escape(alter(player)) for player in players_list]
+    turn_header = re.compile(f"Turn \d+: ({'|'.join(regex_player_list)})")
+    lost_conn = {player: False for player in players_list}
+    for player in players_list:
+        game_log = game_log.replace(player,alter(player))
+    split_log = game_log.split("@P")
+    game_log_list = [
+        remove_text_artifacts(game_action) for game_action in split_log[1:-1]]
+    # skip first entry, final entry doesn't have artifacts
+    game_log_list.append(split_log[-1])
+    for game_action in game_log_list:
+        if not game_action:
+            continue
+        first_word = game_action.split()[0]
+        fullstring = game_action.replace(" (Alt.)", "")
+        turn_header_match = turn_header.search(game_action)
+        if " has lost connection to the game" in game_action:
+            lost_conn[first_word] = True
+        elif " joined the game." in game_action:
+            if lost_conn[first_word]:
+                # don't add reconnects
+                lost_conn[first_word] = False
             else:
+                # add regular joins
                 game_actions.append(fullstring)
-        # Skip looking at extra cards.
-        elif " draws their next card." in i:
+        # New turn begins.
+        elif turn_header_match:
+            game_actions.append(turn_header_match[0])
+        # Skip any of these
+        elif any(action in game_action for action in [
+            " draws their next card.", # looking at extra cards
+            " has left the game." ]): # sideboarding
             continue
-        # Skip leaving to sideboard.
-        elif " has left the game." in i:
-            continue
-        # New turn header. Removes the artifacts
-        elif turn_header.search(i):
-            newstring = " ".join(i.split()[0:2])
-            for j in players_list:
-                if len(newstring.split()) < 3: # <-- this seems to always be true??
-                    if alter(j,original=False) in i.split(": ")[1]:
-                        newstring += " " + alter(j,original=False)
-            game_actions.append(newstring)
         # Skip game state changes.
-        elif ('.' not in i) and ("is being attacked" not in i):
+        elif ('.' not in game_action) and ("is being attacked" not in game_action):
             continue
-        
         elif ("@[" in fullstring) and ("@]" in fullstring):
-            # changes every @[Cardname@:NUMBERS,NUMBERS:@] to @[Cardname@]
+            # change every @[Cardname@:NUMBERS,NUMBERS:@] to @[Cardname@]
             newstring = re.sub(
                 r"(@\[.+?)(@:\d+?,\d+?:)(@\])", 
                 r'\g<1>\g<3>', # remove group 2
@@ -336,26 +381,17 @@ def game_actions(game_log: str, file_modified_time: struct_time) -> list[str]:
             newstring = newstring.split("(")[0] # not sure why this is here
             game_actions.append(newstring)
         # Everything else
-        elif "." in i:
+        elif "." in game_action:
             game_actions.append(fullstring)
     return game_actions
 
-
-def high_roll(init: Union[str, list[str]]) -> dict:
-    remove_trailing = False
-    if isinstance(init, str):
-        init = init.split("@P")
-        remove_trailing = True
-    rolls = {}
-    for i in init:
-        if remove_trailing:
-            tstring = i.rsplit(".",1)[0]
-        else:
-            tstring = i
-        if " rolled a " in i:
-            tlist = tstring.split(" rolled a ")
-            if len(tlist[1]) == 1:
-                rolls[tlist[0].replace(" ","+")] = int(tlist[1])
+def high_roll(game_actions: Union[str, list[str]]) -> dict[str, int]:
+    if isinstance(game_actions, str):
+        game_actions = game_actions.split("@P")
+    game_actions = '\n'.join(game_actions)
+    roll_re = re.compile(r"^(.*?) rolled a ([1-6])", re.MULTILINE)
+    rolls = {player: int(roll)
+            for player, roll in roll_re.findall(game_actions)}
     return rolls
 
 def match_data(ga,gd,pd):
@@ -363,18 +399,18 @@ def match_data(ga,gd,pd):
     # Output: List[Match_Attributes]
 
     MATCH_DATA =    []
-    P1 =            players(ga)[0]
+    P1, P2 = players(ga)[0:2]
     P1_ARCH =       "NA"
     P1_SUBARCH =    "NA"
-    P2 =            players(ga)[1]
     P2_ARCH =       "NA"
     P2_SUBARCH =    "NA"
     try:
-        P1_ROLL =       high_roll(ga)[P1]
-        P2_ROLL =       high_roll(ga)[P2]
+        rolls = high_roll(ga)
+        P1_ROLL = rolls[P1]
+        P2_ROLL = rolls[P2]
     except KeyError:
-        print('oh no')
-        return "High Rolls not Found."
+        raise ValueError(
+            f"Game with players {players(ga)} doesn't have die rolls")
     P1_WINS =       0
     P2_WINS =       0
     MATCH_WINNER =  ""
@@ -847,7 +883,7 @@ def get_all_data(game_log: str, file_last_modified: struct_time):
     # Input:  String,String
     # Output: List[Matches,Games,Plays]
     
-    gameactions = game_actions(game_log,file_last_modified)
+    gameactions = game_actions(game_log)
     gamedata = game_data(gameactions)
     if isinstance(gamedata, str):
         return gamedata
