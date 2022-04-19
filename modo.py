@@ -497,13 +497,14 @@ def get_winner(curr_game_list: list[str], p1: str, p2: str
     lastline = curr_game_list[-1]
     # Last game actions that imply a loss
     MAYBE_LOSS_SENTENCES = (
-        "is being attacked"
+        "is being attacked",
     )
     # Last game actions that imply a win
     WIN_SENTENCES = (
-        "triggered ability from [Thassa's Oracle]",
-        'casts [Approach of the Second Sun]'
+        "triggered ability from @[Thassa's Oracle@]",
+        'casts @[Approach of the Second Sun@]'
     )
+
     # if the final line contains one of the above
     if any(s in lastline for s in MAYBE_LOSS_SENTENCES):
         if lastline.startswith(p1):
