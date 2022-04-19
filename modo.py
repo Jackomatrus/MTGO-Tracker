@@ -1,6 +1,6 @@
 # MODO GameLog Cleaning Module
 import copy
-from time import strftime, struct_time
+from time import strftime, struct_time, gmtime
 from typing import Literal, Pattern, Union
 import re
 from MODO_DATA import (
@@ -428,6 +428,7 @@ def match_data(ga,gd,pd):
     MATCH_FORMAT =  "NA"
     LIM_FORMAT =    "NA"
     MATCH_TYPE =    "NA"
+    # TODO this Date doesn't work with new match ID
     DATE =          f"{ga[0][0:4]}-{ga[0][4:6]}-{ga[0][6:8]}-{ga[0][8:10]}:{ga[0][10:]}"
     MATCH_ID =      f"{ga[0]}_{P1}_{P2}"
     DRAFT_ID =      "NA"
@@ -839,6 +840,7 @@ def get_all_data(game_log: str, file_last_modified: struct_time):
         return gamedata
     playdata = play_data(match_actions)
     matchdata = match_data(match_actions,gamedata[0],playdata)
+    matchdata[-1] = strftime(r'%Y-%m-%d-%H:%M', file_last_modified)
     if isinstance(matchdata, str):
         return matchdata
     timeout = check_timeout(match_actions)
