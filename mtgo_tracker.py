@@ -2930,8 +2930,8 @@ def get_winners():
     exit = False
     raw_dict_new = {}
     for count,key in enumerate(ALL_DATA[3]):
-        match_id = key.split("-")[0]
-        game_num = key.split("-")[1]
+        match_id = key.rsplit("-",1)[0]
+        game_num = key.rsplit("-",1)[1]
         if exit == False:
             for i in ALL_DATA[1]:
                 if (i[0] == match_id) & (str(i[gn_index]) == game_num) & (i[gw_index] == "NA"):
@@ -3829,25 +3829,28 @@ def get_stats():
             index_list.append("Per Game")
         tree1_data = []
         for i in formats_played:
-            hero_n_format = df1_i_merge[(df1_i_merge.P1 == hero) & (df1_i_merge.Format == i)].shape[0]
-            play_count =    df2_hero[(df2_hero.Format == i) & (df2_hero.Action == "Land Drop")].shape[0]
-            cast_count =    df2_hero[(df2_hero.Format == i) & (df2_hero.Action == "Casts")].shape[0]
-            act_count =     df2_hero[(df2_hero.Format == i) & (df2_hero.Action == "Activated Ability")].shape[0]
-            trig_count =    df2_hero[(df2_hero.Format == i) & (df2_hero.Action == "Triggers")].shape[0]
-            attack_count =  df2_hero[(df2_hero.Format == i) & (df2_hero.Action == "Attacks")].Attackers.sum()
-            draw_count =    df2_hero[(df2_hero.Format == i) & (df2_hero.Action == "Draws")].Cards_Drawn.sum()
-            tree1_data.append([play_count,
-                               cast_count,
-                               act_count,
-                               trig_count,
-                               attack_count,
-                               draw_count])
-            tree1_data.append([round(play_count/hero_n_format,1),
-                               round(cast_count/hero_n_format,1),
-                               round(act_count/hero_n_format,1),
-                               round(trig_count/hero_n_format,1),
-                               round(attack_count/hero_n_format,1),
-                               round(draw_count/hero_n_format,1)])
+            try:
+                hero_n_format = df1_i_merge[(df1_i_merge.P1 == hero) & (df1_i_merge.Format == i)].shape[0]
+                play_count =    df2_hero[(df2_hero.Format == i) & (df2_hero.Action == "Land Drop")].shape[0]
+                cast_count =    df2_hero[(df2_hero.Format == i) & (df2_hero.Action == "Casts")].shape[0]
+                act_count =     df2_hero[(df2_hero.Format == i) & (df2_hero.Action == "Activated Ability")].shape[0]
+                trig_count =    df2_hero[(df2_hero.Format == i) & (df2_hero.Action == "Triggers")].shape[0]
+                attack_count =  df2_hero[(df2_hero.Format == i) & (df2_hero.Action == "Attacks")].Attackers.sum()
+                draw_count =    df2_hero[(df2_hero.Format == i) & (df2_hero.Action == "Draws")].Cards_Drawn.sum()
+                tree1_data.append([play_count,
+                                cast_count,
+                                act_count,
+                                trig_count,
+                                attack_count,
+                                draw_count])
+                tree1_data.append([round(play_count/hero_n_format,1),
+                                round(cast_count/hero_n_format,1),
+                                round(act_count/hero_n_format,1),
+                                round(trig_count/hero_n_format,1),
+                                round(attack_count/hero_n_format,1),
+                                round(draw_count/hero_n_format,1)])
+            except ZeroDivisionError:
+                pass
 
         df_tree2 = df2_hero
         turn_list = df_tree2.Turn_Num.value_counts().keys().tolist()
