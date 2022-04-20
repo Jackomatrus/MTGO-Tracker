@@ -18,6 +18,15 @@ from MODO_DATA import (
 # Add the option to the appropriate list below.
 # Add the option under the appropriate header in the input_options.txt file.
 
+# for future use maybe
+class MatchActions(list):
+    def __init__(self, *args):
+        super(MatchActions, self).__init__(*args)
+    
+    @property
+    def match_id(self):
+        return self[0]
+
 def clean_card_set(card_set: set[str]) -> set[str]:
     """Fixes sets of adventure and split card names for draft.
 
@@ -314,18 +323,21 @@ def remove_text_artifacts(game_action: str) -> str:
     return game_action
 
 def get_match_id(game_log: str) -> str:
-    """Extracts the match ID at the start of the game log.
+    """Creates the match ID at the start of the game log.
         Match ids are started with $ and are 36 characters long.
 
     Args:
         game_log (str): String containing a match id as present in game logs.
 
     Returns:
-        str: The match id without the $ sign.
+        str: The match id without the $ sign, but with both player names added
+            e.g. 36characterstring_Jackomatrus_Toffel
     """
     match_id_re = re.compile(r'\$([0-9a-zA-Z-]{36}).{1,2}\$\1')
     try:
-        return match_id_re.findall(game_log)[0]
+        pure_id = match_id_re.findall(game_log)[0]
+        player1, player2 = players(game_log)[0:2]
+        return f'{pure_id}_{player1}_{player2}'
     except IndexError:
         raise ValueError(
             f'No match id in passed game log: {game_log}'
@@ -343,7 +355,7 @@ def new_turn_regex(players: list[str]) -> re.Pattern:
     """
     escaped_and_altered = [re.escape(alter(player)) for player in players]
     player_group_string = f"({'|'.join(escaped_and_altered)})"
-    return re.compile(r'Turn \d+: ' + player_group_string)
+    return re.compile(r'Turn (\d+): ' + player_group_string)
 
 def all_actions(game_log: str) -> list[str]:
     # Input:  String
@@ -365,6 +377,7 @@ def all_actions(game_log: str) -> list[str]:
         first_word = game_action.split()[0]
         turn_header_match = turn_header.search(game_action)
         if turn_header_match:
+            # appends entire match 'Turn X: NAME'
             all_action_list.append(turn_header_match[0])
         elif " has lost connection to the game" in game_action:
             lost_conn[first_word] = True
@@ -389,7 +402,6 @@ def all_actions(game_log: str) -> list[str]:
                 r"(@\[.+?)(@:\d+?,\d+?:)(@\])", 
                 r'\g<1>\g<3>', # remove group 2
                 game_action)
-            newstring = newstring.split("(")[0] # not sure why this is here
             all_action_list.append(newstring)
         # Everything else
         elif "." in game_action:
@@ -428,9 +440,8 @@ def match_data(ga,gd,pd):
     MATCH_FORMAT =  "NA"
     LIM_FORMAT =    "NA"
     MATCH_TYPE =    "NA"
-    # TODO this Date doesn't work with new match ID
-    DATE =          f"{ga[0][0:4]}-{ga[0][4:6]}-{ga[0][6:8]}-{ga[0][8:10]}:{ga[0][10:]}"
-    MATCH_ID =      f"{ga[0]}_{P1}_{P2}"
+    DATE =          "PLACEHOLDER THIS GETS REPLACED"
+    MATCH_ID =      ga[0]
     DRAFT_ID =      "NA"
 
     if P1_ROLL > P2_ROLL:
@@ -523,46 +534,57 @@ def get_winner(curr_game_list: list[str], p1: str, p2: str
         return "NA"
 
 
-def game_data(match_actions: list[str]):
-    # Input:  List[GameActions]
-    # Output: List[G1_List,G2_List,G3_List,NA_Games_Dict{}]
+def game_data(
+    match_actions: list[str]
+    ) -> tuple[
+        list[list[str, int]], 
+        dict[str, list[str]]
+        ]:
+    """Parses a list of actions in an entire match.
 
-    G1 = []
-    G2 = []
-    G3 = []
-    GAME_DATA = [G1, G2, G3]
+    Args:
+        match_actions (list[str]): A list of actions provided from all_actions
+            First entry in this list is the match_ID
+
+    Returns:
+        tuple[list[list[str, int]], dict[str, list[str]] ]: 
+            A list of game lists and a dict of games without a winner.
+            Each game list is structured 
+            [Match_ID, P1, P2, game_num, pd_selector, pd_choice, on_play, 
+            on_draw, P1_mulls, P2_mulls, num_turns, winner]
+            Dict is structured {MatchID-GameNum: list[game actions]}
+    """
+
+    # needed variables
+    ALL_PARSED_GAMES = []
     ALL_GAMES_GA = {}
-
     GAME_NUM = 0
-    PD_SELECTOR = ""
-    PD_CHOICE = ""
-    ON_PLAY = ""
-    ON_DRAW = ""
-    P1_MULLS = 0
-    P2_MULLS = 0
-    TURNS = 0
-    GAME_WINNER = ""
+    # 'useless' placeholders to prevent crash if missing in game log
+    PD_SELECTOR = PD_CHOICE = ON_PLAY = ON_DRAW = ""
+    P1_MULLS = P2_MULLS = TURNS = 0
 
     try:
         P1, P2 = players(match_actions)[0:2]
     except ValueError:
         return "Players not Found."
-    curr_game_list =[]
+    curr_game_list = []
     initial_player_count = join_countdown = len(players(match_actions))
-    MATCH_ID = f"{match_actions[0]}_{P1}_{P2}"
+    MATCH_ID = match_actions[0]
 
     for action in match_actions:
         current_action_list = action.split()
         # all players joining indicate a break between games
         if "joined the game" in action:
-            if join_countdown == 0:
+            if join_countdown > 0:
+                join_countdown -= 1
+            else:
                 # New Game, reset countdown
                 join_countdown = initial_player_count
                 join_countdown -= 1
                 GAME_WINNER = get_winner(curr_game_list, P1, P2)
                 if GAME_WINNER == "NA":
                     ALL_GAMES_GA[f"{MATCH_ID}-{GAME_NUM}"] = curr_game_list
-                GAME_DATA[GAME_NUM - 1].extend((
+                ALL_PARSED_GAMES.append([
                     MATCH_ID,
                     alter(P1,original=True),
                     alter(P2,original=True),
@@ -574,10 +596,8 @@ def game_data(match_actions: list[str]):
                     P1_MULLS,
                     P2_MULLS,
                     TURNS,
-                    GAME_WINNER))
+                    GAME_WINNER])
                 curr_game_list = []
-            else:
-                join_countdown -= 1
         elif "chooses to" in action and "play first" in action:
             GAME_NUM += 1
             PD_SELECTOR = "P1" if current_action_list[0] == P1 else 'P2'
@@ -599,8 +619,7 @@ def game_data(match_actions: list[str]):
     GAME_WINNER = get_winner(curr_game_list,P1,P2)
     if GAME_WINNER == "NA":
         ALL_GAMES_GA[f"{MATCH_ID}-{GAME_NUM}"] = curr_game_list
-    # GAME NUM - 1 cause lists start at index 0
-    GAME_DATA[GAME_NUM - 1].extend((
+    ALL_PARSED_GAMES.append([
         MATCH_ID,
         alter(P1,original=True),
         alter(P2,original=True),
@@ -612,9 +631,8 @@ def game_data(match_actions: list[str]):
         P1_MULLS,
         P2_MULLS,
         TURNS,
-        GAME_WINNER))
-    GAME_DATA = [game for game in GAME_DATA if game]
-    return (GAME_DATA, ALL_GAMES_GA)
+        GAME_WINNER])
+    return (ALL_PARSED_GAMES, ALL_GAMES_GA)
 
 def is_play(play: str) -> bool:
     action_keywords = ["plays","casts","draws","chooses","discards"]
@@ -645,22 +663,22 @@ def get_cards(play: str) -> list[str]:
     """
     return card_re.findall(play)
 
-def play_data(ga: list[str]):
+def player_is_target(
+    tstring: str, player: str
+    ) -> Union[Literal[0], Literal[1]]:
+    while tstring.count("[") > 0:
+        tstring = tstring.split("[",1)
+        if player in tstring[0]:
+            return 1
+        else:
+            tstring = tstring[1].split("]",1)[1]
+    if player in tstring:
+        return 1
+    return 0
+
+def play_data(game_actions: list[str]):
     # Input:  List[GameActions]
     # Output: List[Plays]
-
-    def player_is_target(
-        tstring: str, player: str
-        ) -> Union[Literal[0], Literal[1]]:
-        while tstring.count("[") > 0:
-            tstring = tstring.split("[",1)
-            if player in tstring[0]:
-                return 1
-            else:
-                tstring = tstring[1].split("]",1)[1]
-        if player in tstring:
-            return 1   
-        return 0
 
     PLAY_DATA = []
     ALL_PLAYS = []
@@ -671,12 +689,12 @@ def play_data(ga: list[str]):
     ACTIVE_PLAYER = ""
     NON_ACTIVE_PLAYER = ""
 
-    P1 = players(ga)[0]
-    P2 = players(ga)[1]
-    MATCH_ID = f"{ga[0]}_{P1}_{P2}"
+    P1, P2 = players(game_actions)[0:2]
+    turn_regex = new_turn_regex([P1,P2])
+    MATCH_ID = game_actions[0]
 
-    for i in ga:
-        curr_list = i.split()
+    for i in game_actions:
+        curr_word_list = i.split()
         CASTING_PLAYER = ""
         ACTION = ""
         PRIMARY_CARD = "NA"
@@ -688,97 +706,52 @@ def play_data(ga: list[str]):
         CARDS_DRAWN = 0
         ATTACKERS = 0
         PLAY_DATA = []
-        if (i.find("chooses to play first") != -1) or (i.find("chooses to not play first") != -1):
+        new_turn_match = turn_regex.search(i)
+        if "chooses to " in i and ' play first' in i:
             GAME_NUM += 1
             PLAY_NUM = 0
-        elif (i.find("Turn ") != -1) and (len(curr_list) == 3):
-            TURN_NUM = int(curr_list[1].split(":")[0])
-            ACTIVE_PLAYER = curr_list[2]
-            if ACTIVE_PLAYER == P1:
-                NON_ACTIVE_PLAYER = P2
-            else:
-                NON_ACTIVE_PLAYER = P1
+        elif new_turn_match:
+            TURN_NUM = int(new_turn_match[1])
+            ACTIVE_PLAYER = new_turn_match[2]
+            NON_ACTIVE_PLAYER = P2 if ACTIVE_PLAYER == P1 else P1
+
         elif is_play(i):
-            if curr_list[1] == "plays":
-                CASTING_PLAYER = curr_list[0]
+            if curr_word_list[1] == "plays":
+                CASTING_PLAYER = curr_word_list[0]
                 try:
                     PRIMARY_CARD = get_cards(i)[0]
                 # MODO Bug Encountered. Primary_Card = "NA"
                 except IndexError:
                     pass
                 ACTION = "Land Drop"
-            elif curr_list[1] == "casts":
-                CASTING_PLAYER = curr_list[0]
+            elif curr_word_list[1] == "casts":
+                CASTING_PLAYER = curr_word_list[0]
                 try:
                     PRIMARY_CARD = get_cards(i)[0]
                 # MODO Bug Encountered. Primary_Card = "NA"
                 except IndexError:
                     pass
-                ACTION = curr_list[1].capitalize()
-                if i.find("targeting") != -1:
-                    targets = get_cards(i.split("targeting")[1])
+                ACTION = curr_word_list[1].capitalize()
+                if "targeting" in i:
+                    target_string = i.split("targeting")[1]
+                    targets = get_cards(target_string)
                     try:
                         TARGET_1 = targets[0]
-                    except IndexError:
-                        pass
-                    try:
                         TARGET_2 = targets[1]
-                    except IndexError:
-                        pass
-                    try:
                         TARGET_3 = targets[2]
                     except IndexError:
                         pass
-                    if CASTING_PLAYER == P1:
-                        SELF_TARGET = player_is_target(i.split("targeting")[1],P1)
-                        OPP_TARGET = player_is_target(i.split("targeting")[1],P2)
-                    elif CASTING_PLAYER == P2:
-                        SELF_TARGET = player_is_target(i.split("targeting")[1],P2)
-                        OPP_TARGET = player_is_target(i.split("targeting")[1],P1)                    
-            elif curr_list[1] == "draws":
-                CASTING_PLAYER = curr_list[0]
-                ACTION = curr_list[1].capitalize()
-                CARDS_DRAWN = CARDS_DRAWN_DICT.get(curr_list[2], 8)
-            elif curr_list[1] == "chooses":
+                    SELF_TARGET = player_is_target(target_string, CASTING_PLAYER)
+                    OPP_TARGET = player_is_target(
+                        target_string, P1 if CASTING_PLAYER == P2 else P2)
+            elif curr_word_list[1] == "draws":
+                CASTING_PLAYER = curr_word_list[0]
+                ACTION = 'Draws'
+                CARDS_DRAWN = CARDS_DRAWN_DICT.get(curr_word_list[2], 8)
+            elif curr_word_list[1] == "chooses":
                 continue
-            elif curr_list[1] == "discards":
-                continue
-            elif i.find("is being attacked by") != -1:
-                CASTING_PLAYER = ACTIVE_PLAYER
-                ACTION = "Attacks"
-                ATTACKERS = len(get_cards(i.split("is being attacked by")[1]))
-            elif i.find("puts triggered ability from") != -1:
-                CASTING_PLAYER = curr_list[0]
-                try:
-                    PRIMARY_CARD = get_cards(i)[0]
-                except IndexError:
-                    PRIMARY_CARD = i.split("triggered ability from ")[1].split(" onto the stack ")[0]
-                    # MODO Bug Encountered. Primary_Card = "NA"
-                    if (PRIMARY_CARD == P1) or (PRIMARY_CARD == P2):
-                        PRIMARY_CARD = "NA"
-                ACTION = "Triggers"
-                if i.find("targeting") != -1:
-                    targets = get_cards(i.split("targeting")[1])
-                    try:
-                        TARGET_1 = targets[0]
-                    except IndexError:
-                        pass
-                    try:
-                        TARGET_2 = targets[1]
-                    except IndexError:
-                        pass
-                    try:
-                        TARGET_3 = targets[2]
-                    except IndexError:
-                        pass
-                    if CASTING_PLAYER == P1:
-                        SELF_TARGET = player_is_target(i.split("targeting")[1],P1)
-                        OPP_TARGET = player_is_target(i.split("targeting")[1],P2)
-                    elif CASTING_PLAYER == P2:
-                        SELF_TARGET = player_is_target(i.split("targeting")[1],P2)
-                        OPP_TARGET = player_is_target(i.split("targeting")[1],P1)
             elif i.find("activates an ability of") != -1:
-                CASTING_PLAYER = curr_list[0]
+                CASTING_PLAYER = curr_word_list[0]
                 try:
                     PRIMARY_CARD = get_cards(i)[0]
                 except IndexError:
@@ -787,6 +760,39 @@ def play_data(ga: list[str]):
                     if (PRIMARY_CARD == P1) or (PRIMARY_CARD == P2):
                         PRIMARY_CARD = "NA"
                 ACTION = "Activated Ability"
+                if "targeting" in i:
+                    target_string = i.split("targeting")[1]
+                    targets = get_cards(target_string)
+                    try:
+                        TARGET_1 = targets[0]
+                        TARGET_2 = targets[1]
+                        TARGET_3 = targets[2]
+                    except IndexError:
+                        pass
+                    SELF_TARGET = player_is_target(target_string,CASTING_PLAYER)
+                    OPP_TARGET = player_is_target(
+                        target_string, P1 if CASTING_PLAYER == P2 else P2)
+            elif curr_word_list[1] == "discards":
+                CASTING_PLAYER = curr_word_list[0]
+                ACTION = 'Discards'
+                try:
+                    PRIMARY_CARD = get_cards(i)[0]
+                except:
+                    PRIMARY_CARD = 'NA'
+            elif "is being attacked by" in i:
+                CASTING_PLAYER = ACTIVE_PLAYER
+                ACTION = "Attacks"
+                ATTACKERS = len(get_cards(i.split("is being attacked by")[1]))
+            elif i.find("puts triggered ability from") != -1:
+                CASTING_PLAYER = curr_word_list[0]
+                try:
+                    PRIMARY_CARD = get_cards(i)[0]
+                except IndexError:
+                    PRIMARY_CARD = i.split("triggered ability from ")[1].split(" onto the stack ")[0]
+                    # MODO Bug Encountered. Primary_Card = "NA"
+                    if (PRIMARY_CARD == P1) or (PRIMARY_CARD == P2):
+                        PRIMARY_CARD = "NA"
+                ACTION = "Triggers"
                 if i.find("targeting") != -1:
                     targets = get_cards(i.split("targeting")[1])
                     try:
