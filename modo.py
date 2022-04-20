@@ -695,123 +695,118 @@ def parse_targets(
         player_is_target(target_string, casting_player), 
         player_is_target(target_string, other_player))
 
-def play_data(game_actions: list[str]):
-    # Input:  List[GameActions]
-    # Output: List[Plays]
+def play_data(game_actions: list[str]) -> list[list[str, int]]:
+    """Parses a list of actions into a list of machine readable plays.
 
-    PLAY_DATA = []
-    ALL_PLAYS = []
+    Args:
+        game_actions (list[str]): A list of game actions like from all_actions
 
-    GAME_NUM = 0
-    PLAY_NUM = 0
-    TURN_NUM = 0
-    ACTIVE_PLAYER = ""
-    NON_ACTIVE_PLAYER = ""
+    Returns:
+        list[list[str, int]]: A list of lists.
+            Each inner list represents a play of structure
+            [match_id, game_num, play_num, turn_num, casting_player, 
+            action_type, primary_card, target_1, target_2, target_3, 
+            opp_target, self_target, cards_drawn, attackers, active_player,
+            non_active_player]
+            opp_target, self_target are ints. Rest should be obvious.
+    """
 
-    P1, P2 = players(game_actions)[0:2]
-    turn_regex = new_turn_regex([P1,P2])
-    MATCH_ID = game_actions[0]
+    all_plays = []
+    game_num = turn_num = play_num = 0
+    active_player = non_active_player = ""
+    p1, p2 = players(game_actions)[0:2]
+    turn_regex = new_turn_regex([p1,p2])
+    match_id = game_actions[0]
 
-    for i in game_actions:
-        curr_word_list = i.split()
-        CASTING_PLAYER = ACTION = ""
-        PRIMARY_CARD = TARGET_1 = TARGET_2 = TARGET_3 = "NA"
-        OPP_TARGET = SELF_TARGET = CARDS_DRAWN = ATTACKERS = 0
-        PLAY_DATA = []
-        new_turn_match = turn_regex.search(i)
-        if "chooses to " in i and ' play first' in i:
-            GAME_NUM += 1
-            PLAY_NUM = 0
+    for current_action in game_actions:
+        casting_player = action_type = ""
+        primary_card = target_1 = target_2 = target_3 = "NA"
+        opp_target = self_target = cards_drawn = attackers = 0
+        new_turn_match = turn_regex.search(current_action)
+        curr_word_list = current_action.split()
+        cards_in_action = get_cards(current_action)
+        if "chooses to " in current_action and ' play first' in current_action:
+            game_num += 1
+            play_num = 0
         elif new_turn_match:
-            TURN_NUM = int(new_turn_match[1])
-            ACTIVE_PLAYER = new_turn_match[2]
-            NON_ACTIVE_PLAYER = P2 if ACTIVE_PLAYER == P1 else P1
-        elif is_play(i):
+            turn_num = int(new_turn_match[1])
+            active_player = new_turn_match[2]
+            non_active_player = p2 if active_player == p1 else p1
+        elif is_play(current_action):
             if curr_word_list[1] == "plays":
-                CASTING_PLAYER = curr_word_list[0]
-                try:
-                    PRIMARY_CARD = get_cards(i)[0]
-                # MODO Bug Encountered. Primary_Card = "NA"
-                except IndexError:
-                    pass
-                ACTION = "Land Drop"
+                casting_player = curr_word_list[0]
+                primary_card = cards_in_action[0] if cards_in_action else 'NA'
+                action_type = "Land Drop"
             elif curr_word_list[1] == "casts":
-                CASTING_PLAYER = curr_word_list[0]
-                try:
-                    PRIMARY_CARD = get_cards(i)[0]
-                # MODO Bug Encountered. Primary_Card = "NA"
-                except IndexError:
-                    pass
-                ACTION = curr_word_list[1].capitalize()
-                if "targeting" in i:
-                    TARGET_1, TARGET_2, TARGET_3, SELF_TARGET, OPP_TARGET = (
-                        parse_targets(i, CASTING_PLAYER,
-                                        P1 if CASTING_PLAYER == P2 else P2))
+                casting_player = curr_word_list[0]
+                primary_card = cards_in_action[0] if cards_in_action else 'NA'
+                action_type = 'Casts'
+                if "targeting" in current_action:
+                    target_1, target_2, target_3, self_target, opp_target = (
+                        parse_targets(current_action, casting_player,
+                                        p1 if casting_player == p2 else p2))
             elif curr_word_list[1] == "draws":
-                CASTING_PLAYER = curr_word_list[0]
-                ACTION = 'Draws'
-                CARDS_DRAWN = CARDS_DRAWN_DICT.get(curr_word_list[2], 8)
+                casting_player = curr_word_list[0]
+                action_type = 'Draws'
+                cards_drawn = CARDS_DRAWN_DICT.get(curr_word_list[2], 8)
             elif curr_word_list[1] == "chooses":
                 continue
-            elif i.find("activates an ability of") != -1:
-                CASTING_PLAYER = curr_word_list[0]
-                try:
-                    PRIMARY_CARD = get_cards(i)[0]
-                except IndexError:
-                    PRIMARY_CARD = i.split("activates an ability of ")[1].split(" (")[0]
+            elif current_action.find("activates an ability of") != -1:
+                casting_player = curr_word_list[0]
+                if cards_in_action:
+                    primary_card = cards_in_action[0]
+                else:
+                    primary_card = current_action.split(
+                        "activates an ability of ")[1].split(" (")[0]
                     # MODO Bug Encountered. Primary_Card = "NA"
-                    if (PRIMARY_CARD == P1) or (PRIMARY_CARD == P2):
-                        PRIMARY_CARD = "NA"
-                ACTION = "Activated Ability"
-                if "targeting" in i:
-                    TARGET_1, TARGET_2, TARGET_3, SELF_TARGET, OPP_TARGET = (
-                        parse_targets(i, CASTING_PLAYER,
-                                        P1 if CASTING_PLAYER == P2 else P2))
+                    if primary_card in (p1,p2):
+                        primary_card = "NA"
+                action_type = "Activated Ability"
+                if "targeting" in current_action:
+                    target_1, target_2, target_3, self_target, opp_target = (
+                        parse_targets(current_action, casting_player,
+                                        p1 if casting_player == p2 else p2))
             elif curr_word_list[1] == "discards":
-                CASTING_PLAYER = curr_word_list[0]
-                ACTION = 'Discards'
-                try:
-                    PRIMARY_CARD = get_cards(i)[0]
-                except:
-                    PRIMARY_CARD = 'NA'
-            elif "is being attacked by" in i:
-                CASTING_PLAYER = ACTIVE_PLAYER
-                ACTION = "Attacks"
-                ATTACKERS = len(get_cards(i.split("is being attacked by")[1]))
-            elif i.find("puts triggered ability from") != -1:
-                CASTING_PLAYER = curr_word_list[0]
-                try:
-                    PRIMARY_CARD = get_cards(i)[0]
-                except IndexError:
-                    PRIMARY_CARD = i.split("triggered ability from ")[1].split(" onto the stack ")[0]
+                casting_player = curr_word_list[0]
+                action_type = 'Discards'
+                primary_card = cards_in_action[0] if cards_in_action else 'NA'
+            elif "is being attacked by" in current_action:
+                casting_player = active_player
+                action_type = "Attacks"
+                attackers = len(get_cards(current_action.split("is being attacked by")[1]))
+            elif "puts triggered ability from" in current_action:
+                casting_player = curr_word_list[0]
+                if cards_in_action:
+                    primary_card = cards_in_action[0]
+                else:
+                    primary_card = current_action.split("triggered ability from ")[1].split(" onto the stack ")[0]
                     # MODO Bug Encountered. Primary_Card = "NA"
-                    if (PRIMARY_CARD == P1) or (PRIMARY_CARD == P2):
-                        PRIMARY_CARD = "NA"
-                ACTION = "Triggers"
-                if "targeting" in i:
-                    TARGET_1, TARGET_2, TARGET_3, SELF_TARGET, OPP_TARGET = (
-                        parse_targets(i, CASTING_PLAYER,
-                                        P1 if CASTING_PLAYER == P2 else P2))
-            PLAY_NUM += 1
-            PLAY_DATA.extend((
-                MATCH_ID,
-                GAME_NUM,
-                PLAY_NUM,
-                TURN_NUM,
-                alter(CASTING_PLAYER,original=True),
-                ACTION,
-                PRIMARY_CARD,
-                TARGET_1,
-                TARGET_2,
-                TARGET_3,
-                OPP_TARGET,
-                SELF_TARGET,
-                CARDS_DRAWN,
-                ATTACKERS,
-                alter(ACTIVE_PLAYER,original=True),
-                alter(NON_ACTIVE_PLAYER,original=True)))
-            ALL_PLAYS.append(PLAY_DATA)
-    return ALL_PLAYS
+                    if primary_card in (p1,p2):
+                        primary_card = "NA"
+                action_type = "Triggers"
+                if "targeting" in current_action:
+                    target_1, target_2, target_3, self_target, opp_target = (
+                        parse_targets(current_action, casting_player,
+                                        p1 if casting_player == p2 else p2))
+            play_num += 1
+            all_plays.append([
+                match_id,
+                game_num,
+                play_num,
+                turn_num,
+                alter(casting_player,original=True),
+                action_type,
+                primary_card,
+                target_1,
+                target_2,
+                target_3,
+                opp_target,
+                self_target,
+                cards_drawn,
+                attackers,
+                alter(active_player,original=True),
+                alter(non_active_player,original=True)])
+    return all_plays
 
 def get_all_data(game_log: str, file_last_modified: struct_time):
     # Input:  String,String
