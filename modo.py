@@ -27,6 +27,9 @@ class MatchActions(list):
     def match_id(self):
         return self[0]
 
+CARD_PATTERN = re.compile(r"@\[(.+?)@]")
+DIE_ROLL_PATTERN = re.compile(r"^(.*?) rolled a ([1-6])", re.MULTILINE)
+
 def clean_card_set(card_set: set[str]) -> set[str]:
     """Fixes sets of adventure and split card names for draft.
 
@@ -285,8 +288,8 @@ def check_timeout(
 
     Returns:
         tuple[bool, Union[Literal[None], str]]: 
-        Boolean value is whether someone timed out.
-        If someone timed out, string is the players name.
+            Boolean value is whether someone timed out.
+            If someone timed out, string is the player's name.
     """
     for action in game_actions:
         for reason in [
@@ -412,64 +415,43 @@ def high_roll(game_actions: Union[str, list[str]]) -> dict[str, int]:
     if isinstance(game_actions, str):
         game_actions = game_actions.split("@P")
     game_actions = '\n'.join(game_actions)
-    roll_re = re.compile(r"^(.*?) rolled a ([1-6])", re.MULTILINE)
     rolls = {player: int(roll)
-            for player, roll in roll_re.findall(game_actions)}
+            for player, roll in DIE_ROLL_PATTERN.findall(game_actions)}
     return rolls
 
-def match_data(ga,gd,pd):
+def match_data(ga,gd, log_last_modified: struct_time):
     # Input:  List[GameActions],List[GameData],List[PlayData]
     # Output: List[Match_Attributes]
 
-    MATCH_DATA =    []
     P1, P2 = players(ga)[0:2]
-    P1_ARCH =       "NA"
-    P1_SUBARCH =    "NA"
-    P2_ARCH =       "NA"
-    P2_SUBARCH =    "NA"
+    P1_ARCH = P1_SUBARCH = P2_ARCH = P2_SUBARCH = "NA"
+    LIM_FORMAT = DRAFT_ID = MATCH_TYPE = MATCH_FORMAT = 'NA'
     try:
         rolls = high_roll(ga)
         P1_ROLL = rolls[P1]
         P2_ROLL = rolls[P2]
     except KeyError:
         raise ValueError(
-            f"Game with players {players(ga)} doesn't have die rolls")
-    P1_WINS =       0
-    P2_WINS =       0
-    MATCH_WINNER =  ""
-    MATCH_FORMAT =  "NA"
-    LIM_FORMAT =    "NA"
-    MATCH_TYPE =    "NA"
-    DATE =          "PLACEHOLDER THIS GETS REPLACED"
-    MATCH_ID =      ga[0]
-    DRAFT_ID =      "NA"
-
-    if P1_ROLL > P2_ROLL:
-        ROLL_WINNER = "P1"
+            f"Game with players {P1} and {P2} doesn't have die rolls")
+    P1_WINS = P2_WINS = 0
+    MATCH_WINNER = ""
+    DATE = strftime(r'%Y-%m-%d-%H:%M', log_last_modified)
+    MATCH_ID = ga[0]
+    assert all(game[0] == MATCH_ID for game in gd), (
+        f"game data match_id doesn't match game action's match_id. gd:{gd}")
+    ROLL_WINNER = "P1" if P1_ROLL > P2_ROLL else 'P2'
+    winners = [game[HEADERS["Games"].index("Game_Winner")] for game in gd]
+    P1_WINS = winners.count('P1')
+    P1_WINS = winners.count('P2')
+    timeout = check_timeout(ga)
+    if timeout[0]:
+        MATCH_WINNER = "P1" if timeout[1] == P2 else 'P2'
+    elif P1_WINS == P2_WINS:
+        MATCH_WINNER = "NA"
     else:
-        ROLL_WINNER = "P2"
-    
-    for i in gd:
-        if i[0] == MATCH_ID and i[HEADERS["Games"].index("Game_Winner")] == "P1":
-            P1_WINS += 1
-        elif i[0] == MATCH_ID and i[HEADERS["Games"].index("Game_Winner")] == "P2":
-            P2_WINS += 1
+        MATCH_WINNER = "P1" if P1_WINS > P2_WINS else 'P2'
 
-    if P1_WINS > P2_WINS:
-        MATCH_WINNER = "P1"
-    elif P2_WINS > P1_WINS:
-        MATCH_WINNER = "P2"
-    else:
-        timeout = check_timeout(ga)
-        if timeout[0] == True:
-            if timeout[1] == P1:
-                MATCH_WINNER = "P2"
-            else:
-                MATCH_WINNER = "P1"
-        else:
-            MATCH_WINNER = "NA"
-
-    MATCH_DATA.extend((
+    return [
         MATCH_ID,
         DRAFT_ID,
         alter(P1,original=True),
@@ -487,8 +469,7 @@ def match_data(ga,gd,pd):
         MATCH_FORMAT,
         LIM_FORMAT,
         MATCH_TYPE,
-        DATE))
-    return MATCH_DATA
+        DATE]
 
 def get_winner(curr_game_list: list[str], p1: str, p2: str
     ) -> Union[Literal["NA"], Literal["P1"], Literal["P2"]]:
@@ -496,7 +477,9 @@ def get_winner(curr_game_list: list[str], p1: str, p2: str
     LOSE_SENTENCES = (
         "has lost the game", 
         "loses because of drawing a card",
-        "has conceded"
+        "has conceded",
+        "has run out of time and has lost the match",
+        " has lost the game due to disconnection"
     )
     for loss_reason in LOSE_SENTENCES:
         for action in curr_game_list:
@@ -649,20 +632,6 @@ def is_play(play: str) -> bool:
             return True
     return False
 
-def get_cards(play: str) -> list[str]:
-    card_re = re.compile(r"@\[(.+?)@]")
-    """old code
-    cards = []
-    count = play.count("@[")
-    while count > 0:
-        play = play.split("@[",1)
-        play = play[1].split("@]",1)
-        cards.append(play[0])
-        play = play[1]
-        count -= 1  
-    """
-    return card_re.findall(play)
-
 def player_is_target(
     tstring: str, player: str
     ) -> Union[Literal[0], Literal[1]]:
@@ -684,7 +653,7 @@ def parse_targets(
         raise ValueError(f'expected action with targets, got {action}')
     target_string = action.split("targeting")[1]
     target_1 = target_2 = target_3 = "NA"
-    targets = get_cards(target_string)
+    targets = CARD_PATTERN.findall(target_string)
     try:
         target_1 = targets[0]
         target_2 = targets[1]
@@ -724,7 +693,7 @@ def play_data(game_actions: list[str]) -> list[list[str, int]]:
         opp_target = self_target = cards_drawn = attackers = 0
         new_turn_match = turn_regex.search(current_action)
         curr_word_list = current_action.split()
-        cards_in_action = get_cards(current_action)
+        cards_in_action = CARD_PATTERN.findall(current_action)
         if "chooses to " in current_action and ' play first' in current_action:
             game_num += 1
             play_num = 0
@@ -773,7 +742,7 @@ def play_data(game_actions: list[str]) -> list[list[str, int]]:
             elif "is being attacked by" in current_action:
                 casting_player = active_player
                 action_type = "Attacks"
-                attackers = len(get_cards(current_action.split("is being attacked by")[1]))
+                attackers = len(CARD_PATTERN.findall(current_action.split("is being attacked by")[1]))
             elif "puts triggered ability from" in current_action:
                 casting_player = curr_word_list[0]
                 if cards_in_action:
@@ -819,10 +788,7 @@ def get_all_data(game_log: str, file_last_modified: struct_time):
     if isinstance(gamedata, str):
         return gamedata
     playdata = play_data(match_actions)
-    matchdata = match_data(match_actions,gamedata[0],playdata)
-    matchdata[-1] = strftime(r'%Y-%m-%d-%H:%M', file_last_modified)
-    if isinstance(matchdata, str):
-        return matchdata
+    matchdata = match_data(match_actions, gamedata[0], file_last_modified)
     timeout = check_timeout(match_actions)
 
     return [matchdata,gamedata[0],playdata,gamedata[1],timeout]
