@@ -617,6 +617,9 @@ def get_all_data(fp_logs,fp_drafts,copy):
                     with io.open(i,"r",encoding="ansi") as gamelog:
                         initial = gamelog.read()
                         mtime = time.localtime(os.path.getmtime(i))
+                    # spectator games are almost impossible to parse
+                    if 'has started watching' in initial: 
+                        continue
                     parsed_data = modo.get_all_data(initial, mtime)
                     if isinstance(parsed_data, str):
                         skip_dict[i] = parsed_data
@@ -3733,11 +3736,11 @@ def get_stats():
                     opp_mull_rate = round((i[(i.P2_Subarch == opp_deck)].P2_Mulls.sum()/total_n),2)
                     turn_rate =     round((i[(i.P2_Subarch == opp_deck)].Turns.sum()/total_n),2)     
                 tree4data.append([wins,
-                                  losses,
-                                  win_rate,
-                                  hero_mull_rate,
-                                  opp_mull_rate,
-                                  turn_rate])
+                                losses,
+                                win_rate,
+                                hero_mull_rate,
+                                opp_mull_rate,
+                                turn_rate])
         
         tree_data =     [tree1data,tree2data,tree3data,tree4data]
         frames =        [mid_frame1,mid_frame2,mid_frame3,mid_frame4]
@@ -3754,9 +3757,9 @@ def get_stats():
                 for i in range(2,len(tree["column"])):
                     tree.column(i,anchor="center")
                 index_list = [["All Games","Overall"],["","Play"],["","Draw"],
-                              ["Game 1","Overall"],["","Play"],["","Draw"],
-                              ["Game 2","Overall"],["","Play"],["","Draw"],
-                              ["Game 3","Overall"],["","Play"],["","Draw"]]
+                            ["Game 1","Overall"],["","Play"],["","Draw"],
+                            ["Game 2","Overall"],["","Play"],["","Draw"],
+                            ["Game 3","Overall"],["","Play"],["","Draw"]]
                 tagged = True
                 count = 0
                 for i in range(len(index_list)):
