@@ -676,6 +676,25 @@ def player_is_target(
         return 1
     return 0
 
+def parse_targets(
+    action: str, casting_player: str, other_player: str
+    ) -> tuple[str, str, str, Literal[0,1], Literal[0,1]]:
+
+    if 'targeting' not in action:
+        raise ValueError(f'expected action with targets, got {action}')
+    target_string = action.split("targeting")[1]
+    target_1 = target_2 = target_3 = "NA"
+    targets = get_cards(target_string)
+    try:
+        target_1 = targets[0]
+        target_2 = targets[1]
+        target_3 = targets[2]
+    except IndexError:
+        pass
+    return (target_1, target_2, target_3, 
+        player_is_target(target_string, casting_player), 
+        player_is_target(target_string, other_player))
+
 def play_data(game_actions: list[str]):
     # Input:  List[GameActions]
     # Output: List[Plays]
@@ -695,16 +714,9 @@ def play_data(game_actions: list[str]):
 
     for i in game_actions:
         curr_word_list = i.split()
-        CASTING_PLAYER = ""
-        ACTION = ""
-        PRIMARY_CARD = "NA"
-        TARGET_1 = "NA"
-        TARGET_2 = "NA"
-        TARGET_3 = "NA"
-        OPP_TARGET = 0
-        SELF_TARGET = 0
-        CARDS_DRAWN = 0
-        ATTACKERS = 0
+        CASTING_PLAYER = ACTION = ""
+        PRIMARY_CARD = TARGET_1 = TARGET_2 = TARGET_3 = "NA"
+        OPP_TARGET = SELF_TARGET = CARDS_DRAWN = ATTACKERS = 0
         PLAY_DATA = []
         new_turn_match = turn_regex.search(i)
         if "chooses to " in i and ' play first' in i:
@@ -714,7 +726,6 @@ def play_data(game_actions: list[str]):
             TURN_NUM = int(new_turn_match[1])
             ACTIVE_PLAYER = new_turn_match[2]
             NON_ACTIVE_PLAYER = P2 if ACTIVE_PLAYER == P1 else P1
-
         elif is_play(i):
             if curr_word_list[1] == "plays":
                 CASTING_PLAYER = curr_word_list[0]
@@ -733,17 +744,9 @@ def play_data(game_actions: list[str]):
                     pass
                 ACTION = curr_word_list[1].capitalize()
                 if "targeting" in i:
-                    target_string = i.split("targeting")[1]
-                    targets = get_cards(target_string)
-                    try:
-                        TARGET_1 = targets[0]
-                        TARGET_2 = targets[1]
-                        TARGET_3 = targets[2]
-                    except IndexError:
-                        pass
-                    SELF_TARGET = player_is_target(target_string, CASTING_PLAYER)
-                    OPP_TARGET = player_is_target(
-                        target_string, P1 if CASTING_PLAYER == P2 else P2)
+                    TARGET_1, TARGET_2, TARGET_3, SELF_TARGET, OPP_TARGET = (
+                        parse_targets(i, CASTING_PLAYER,
+                                        P1 if CASTING_PLAYER == P2 else P2))
             elif curr_word_list[1] == "draws":
                 CASTING_PLAYER = curr_word_list[0]
                 ACTION = 'Draws'
@@ -761,17 +764,9 @@ def play_data(game_actions: list[str]):
                         PRIMARY_CARD = "NA"
                 ACTION = "Activated Ability"
                 if "targeting" in i:
-                    target_string = i.split("targeting")[1]
-                    targets = get_cards(target_string)
-                    try:
-                        TARGET_1 = targets[0]
-                        TARGET_2 = targets[1]
-                        TARGET_3 = targets[2]
-                    except IndexError:
-                        pass
-                    SELF_TARGET = player_is_target(target_string,CASTING_PLAYER)
-                    OPP_TARGET = player_is_target(
-                        target_string, P1 if CASTING_PLAYER == P2 else P2)
+                    TARGET_1, TARGET_2, TARGET_3, SELF_TARGET, OPP_TARGET = (
+                        parse_targets(i, CASTING_PLAYER,
+                                        P1 if CASTING_PLAYER == P2 else P2))
             elif curr_word_list[1] == "discards":
                 CASTING_PLAYER = curr_word_list[0]
                 ACTION = 'Discards'
@@ -793,26 +788,10 @@ def play_data(game_actions: list[str]):
                     if (PRIMARY_CARD == P1) or (PRIMARY_CARD == P2):
                         PRIMARY_CARD = "NA"
                 ACTION = "Triggers"
-                if i.find("targeting") != -1:
-                    targets = get_cards(i.split("targeting")[1])
-                    try:
-                        TARGET_1 = targets[0]
-                    except IndexError:
-                        pass
-                    try:
-                        TARGET_2 = targets[1]
-                    except IndexError:
-                        pass
-                    try:
-                        TARGET_3 = targets[2]
-                    except IndexError:
-                        pass
-                    if CASTING_PLAYER == P1:
-                        SELF_TARGET = player_is_target(i.split("targeting")[1],P1)
-                        OPP_TARGET = player_is_target(i.split("targeting")[1],P2)
-                    elif CASTING_PLAYER == P2:
-                        SELF_TARGET = player_is_target(i.split("targeting")[1],P2)
-                        OPP_TARGET = player_is_target(i.split("targeting")[1],P1)
+                if "targeting" in i:
+                    TARGET_1, TARGET_2, TARGET_3, SELF_TARGET, OPP_TARGET = (
+                        parse_targets(i, CASTING_PLAYER,
+                                        P1 if CASTING_PLAYER == P2 else P2))
             PLAY_NUM += 1
             PLAY_DATA.extend((
                 MATCH_ID,
