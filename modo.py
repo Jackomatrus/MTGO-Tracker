@@ -25,7 +25,22 @@ class MatchActions(list):
     
     @property
     def match_id(self):
-        return self[0]
+        if len(self):
+            return self[0]
+        else:
+            return "NA"
+    @match_id.setter
+    def match_id(self, new):
+        match_id_re = re.compile(r'[0-9a-zA-Z-]{36}_.+?_.+')
+        if not match_id_re.fullmatch(new):
+            raise ValueError(
+                f'Match_ID needs to be 36 characters followed by '
+                f'_P1name_P2name, got\n{new}')
+        self[0] = new
+    
+    @property
+    def players(self):
+        return players(self)
 
 CARD_PATTERN = re.compile(r"@\[(.+?)@]")
 DIE_ROLL_PATTERN = re.compile(r"^(.*?) rolled a ([1-6])", re.MULTILINE)
@@ -363,7 +378,7 @@ def new_turn_regex(players: list[str]) -> re.Pattern:
 def all_actions(game_log: str) -> list[str]:
     # Input:  String
     # Output: List[Strings]
-    all_action_list = [get_match_id(game_log)]
+    match_actions = MatchActions([get_match_id(game_log)])
     players_list = players(game_log)
     turn_header = new_turn_regex(players_list)
     lost_conn = {player: False for player in players_list}
@@ -381,7 +396,7 @@ def all_actions(game_log: str) -> list[str]:
         turn_header_match = turn_header.search(game_action)
         if turn_header_match:
             # appends entire match 'Turn X: NAME'
-            all_action_list.append(turn_header_match[0])
+            match_actions.append(turn_header_match[0])
         elif " has lost connection to the game" in game_action:
             lost_conn[first_word] = True
         elif " joined the game." in game_action:
@@ -390,7 +405,7 @@ def all_actions(game_log: str) -> list[str]:
                 lost_conn[first_word] = False
             else:
                 # append regular joins
-                all_action_list.append(game_action)
+                match_actions.append(game_action)
         # Skip any of these
         elif any(action in game_action for action in [
             " draws their next card.", # looking at extra cards
@@ -405,11 +420,11 @@ def all_actions(game_log: str) -> list[str]:
                 r"(@\[.+?)(@:\d+?,\d+?:)(@\])", 
                 r'\g<1>\g<3>', # remove group 2
                 game_action)
-            all_action_list.append(newstring)
+            match_actions.append(newstring)
         # Everything else
         elif "." in game_action:
-            all_action_list.append(game_action)
-    return all_action_list
+            match_actions.append(game_action)
+    return match_actions
 
 def high_roll(game_actions: Union[str, list[str]]) -> dict[str, int]:
     if isinstance(game_actions, str):
@@ -419,15 +434,19 @@ def high_roll(game_actions: Union[str, list[str]]) -> dict[str, int]:
             for player, roll in DIE_ROLL_PATTERN.findall(game_actions)}
     return rolls
 
-def match_data(ga,gd, log_last_modified: struct_time):
+def match_data(
+    match_actions: list[str], 
+    all_games: list[list[Union[str, int]]], 
+    log_last_modified: struct_time
+    ) -> list[Union[str, int]]:
     # Input:  List[GameActions],List[GameData],List[PlayData]
     # Output: List[Match_Attributes]
 
-    P1, P2 = players(ga)[0:2]
+    P1, P2 = players(match_actions)[0:2]
     P1_ARCH = P1_SUBARCH = P2_ARCH = P2_SUBARCH = "NA"
     LIM_FORMAT = DRAFT_ID = MATCH_TYPE = MATCH_FORMAT = 'NA'
     try:
-        rolls = high_roll(ga)
+        rolls = high_roll(match_actions)
         P1_ROLL = rolls[P1]
         P2_ROLL = rolls[P2]
     except KeyError:
@@ -436,14 +455,14 @@ def match_data(ga,gd, log_last_modified: struct_time):
     P1_WINS = P2_WINS = 0
     MATCH_WINNER = ""
     DATE = strftime(r'%Y-%m-%d-%H:%M', log_last_modified)
-    MATCH_ID = ga[0]
-    assert all(game[0] == MATCH_ID for game in gd), (
-        f"game data match_id doesn't match game action's match_id. gd:{gd}")
+    MATCH_ID = match_actions[0]
+    assert all(game[0] == MATCH_ID for game in all_games), (
+        f"game data match_id doesn't match game action's match_id. gd:{all_games}")
     ROLL_WINNER = "P1" if P1_ROLL > P2_ROLL else 'P2'
-    winners = [game[HEADERS["Games"].index("Game_Winner")] for game in gd]
+    winners = [game[HEADERS["Games"].index("Game_Winner")] for game in all_games]
     P1_WINS = winners.count('P1')
     P1_WINS = winners.count('P2')
-    timeout = check_timeout(ga)
+    timeout = check_timeout(match_actions)
     if timeout[0]:
         MATCH_WINNER = "P1" if timeout[1] == P2 else 'P2'
     elif P1_WINS == P2_WINS:
@@ -473,6 +492,8 @@ def match_data(ga,gd, log_last_modified: struct_time):
 
 def get_winner(curr_game_list: list[str], p1: str, p2: str
     ) -> Union[Literal["NA"], Literal["P1"], Literal["P2"]]:
+    player_dict = {p1:'P1', p2:'P2'}
+    reversed_player_dict = {p1:'P2', p2:'P1'}
     # definitive loss statements
     LOSE_SENTENCES = (
         "has lost the game", 
@@ -481,37 +502,24 @@ def get_winner(curr_game_list: list[str], p1: str, p2: str
         "has run out of time and has lost the match",
         " has lost the game due to disconnection"
     )
-    for loss_reason in LOSE_SENTENCES:
-        for action in curr_game_list:
-            if loss_reason in action:
-                if action.startswith(p1):
-                    return "P2"
-                elif action.startswith(p2):
-                    return "P1"
+    for action in curr_game_list:
+        if any(reason in action for reason in LOSE_SENTENCES):
+                return reversed_player_dict.get(action.split()[0], 'NA')
 
     lastline = curr_game_list[-1]
     # Last game actions that imply a loss
     MAYBE_LOSS_SENTENCES = (
-        "is being attacked",
-    )
+        "is being attacked",)
     # Last game actions that imply a win
     WIN_SENTENCES = (
         "triggered ability from @[Thassa's Oracle@]",
-        'casts @[Approach of the Second Sun@]'
-    )
-
+        'casts @[Approach of the Second Sun@]')
     # if the final line contains one of the above
     if any(s in lastline for s in MAYBE_LOSS_SENTENCES):
-        if lastline.startswith(p1):
-            return "P2"
-        elif lastline.startswith(p2):
-            return "P1"
+        return reversed_player_dict.get(lastline.split()[0], 'NA')
     # if the final line contains any win statements
     elif any(s in lastline for s in WIN_SENTENCES):
-        if lastline.startswith(p1):
-            return "P1"
-        elif lastline.startswith(p2):
-            return "P2"
+        return player_dict.get(lastline.split()[0], 'NA')
     # Could not determine a winner.
     else:
         return "NA"
@@ -520,7 +528,7 @@ def get_winner(curr_game_list: list[str], p1: str, p2: str
 def game_data(
     match_actions: list[str]
     ) -> tuple[
-        list[list[str, int]], 
+        list[list[Union[str, int]]], 
         dict[str, list[str]]
         ]:
     """Parses a list of actions in an entire match.
@@ -535,7 +543,7 @@ def game_data(
             Each game list is structured 
             [Match_ID, P1, P2, game_num, pd_selector, pd_choice, on_play, 
             on_draw, P1_mulls, P2_mulls, num_turns, winner]
-            Dict is structured {MatchID-GameNum: list[game actions]}
+            Dict is structured {'MatchID-GameNum': list[game actions]}
     """
 
     # needed variables
@@ -632,19 +640,6 @@ def is_play(play: str) -> bool:
             return True
     return False
 
-def player_is_target(
-    tstring: str, player: str
-    ) -> Union[Literal[0], Literal[1]]:
-    while tstring.count("[") > 0:
-        tstring = tstring.split("[",1)
-        if player in tstring[0]:
-            return 1
-        else:
-            tstring = tstring[1].split("]",1)[1]
-    if player in tstring:
-        return 1
-    return 0
-
 def parse_targets(
     action: str, casting_player: str, other_player: str
     ) -> tuple[str, str, str, Literal[0,1], Literal[0,1]]:
@@ -660,11 +655,13 @@ def parse_targets(
         target_3 = targets[2]
     except IndexError:
         pass
-    return (target_1, target_2, target_3, 
-        player_is_target(target_string, casting_player), 
-        player_is_target(target_string, other_player))
+    # only check for player name as targets outside of brackets
+    without_brackets = re.sub(r'\[.*?\]', '', target_string)
+    self_target = int(casting_player in without_brackets)
+    opp_target = int(other_player in without_brackets)
+    return (target_1, target_2, target_3, self_target, opp_target)
 
-def play_data(game_actions: list[str]) -> list[list[str, int]]:
+def play_data(game_actions: list[str]) -> list[list[Union[str, int]]]:
     """Parses a list of actions into a list of machine readable plays.
 
     Args:
@@ -777,7 +774,14 @@ def play_data(game_actions: list[str]) -> list[list[str, int]]:
                 alter(non_active_player,original=True)])
     return all_plays
 
-def get_all_data(game_log: str, file_last_modified: struct_time):
+def get_all_data(
+    game_log: str, file_last_modified: struct_time
+    ) ->tuple[
+        list[Union[str, int]], 
+        list[list[Union[str, int]]], 
+        list[list[Union[str, int]]], 
+        dict[str, list[str]], 
+        tuple[bool, Union[str, Literal[None]]]]:
     # Input:  String,String
     # Output: List[Matches,Games,Plays]
     
@@ -791,4 +795,4 @@ def get_all_data(game_log: str, file_last_modified: struct_time):
     matchdata = match_data(match_actions, gamedata[0], file_last_modified)
     timeout = check_timeout(match_actions)
 
-    return [matchdata,gamedata[0],playdata,gamedata[1],timeout]
+    return (matchdata,gamedata[0],playdata,gamedata[1],timeout)
