@@ -642,7 +642,7 @@ def get_all_data(fp_logs,fp_drafts,copy):
                         new_data[2].append(i)
                     for i in parsed_data[3]:
                         new_data[3] = new_data[3] | parsed_data[3]
-                    if parsed_data[4][0] == True:
+                    if parsed_data[4][0]: # if there was a timeout in match
                         TIMEOUT[parsed_data[0][0]] = parsed_data[4][1]
                     match_count += 1
         new_data_inverted = modo.invert_join(new_data)
@@ -787,17 +787,9 @@ def print_data(data,headers,update_status,start_index,apply_filter):
 
     df_rows = df.to_numpy().tolist()
 
-    end_index = start_index + ln_per_page
-    if len(df_rows) <= end_index:
-        end_index = len(df_rows)
-        next_button["state"] = tk.DISABLED
-    else:
-        next_button["state"] = tk.NORMAL
-
-    if start_index == 0:
-        back_button["state"] = tk.DISABLED
-    else:
-        back_button["state"] = tk.NORMAL
+    end_index = min(start_index + ln_per_page, len(df_rows))
+    next_button["state"] = tk.DISABLED if end_index == len(df_rows) else tk.NORMAL
+    back_button["state"] = tk.DISABLED if start_index == 0 else tk.NORMAL
 
     for i in range(start_index,end_index):
         tree1.insert("","end",values=df_rows[i])
