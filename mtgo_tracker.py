@@ -6,6 +6,7 @@ from tkinter import filedialog
 from tkinter import messagebox
 from tkinter import ttk
 from tkcalendar import DateEntry
+from pathlib import Path
 import csv
 from MODO_DATA import ARCHETYPES
 import modo
@@ -977,7 +978,7 @@ def rerun_decks_window():
             t = "Updated the P1_Subarch, P2_Subarch columns for Unknown Decks in the Date Range: " + list(ALL_DECKS.keys())[0]
             deck_data_guess(update_type="Unknowns")
         elif mode == "Limited":
-            t = "Updated the P1_Subarch, P2_Subarch columns for Limited Matches in the Date Range: " + list(ALL_DECKS.keys())[0]
+            t = "Updated the P1_Subarch, P2_Subarch columns for Limited Matches"
             deck_data_guess(update_type="Limited")
         elif mode == "Constructed":
             t = "Updated the P1_Subarch, P2_Subarch columns for Constructed Matches in the Date Range: " + list(ALL_DECKS.keys())[0]
@@ -1051,8 +1052,8 @@ def rerun_decks_window():
     button_apply.grid(row=0,column=1,padx=10,pady=10)
     button_close.grid(row=0,column=2,padx=10,pady=10)   
 
-    if len(ALL_DECKS) == 0:
-        button_apply["state"] = tk.DISABLED
+    '''if len(ALL_DECKS) == 0:
+        button_apply["state"] = tk.DISABLED'''
 
     # Comment out if we want to add back ability to import sample decklists from .txt files.
     button2["state"] = tk.DISABLED
