@@ -5,9 +5,9 @@ from typing import Literal, Pattern, Union
 import re
 from MODO_DATA import (
     BASIC_LAND_DICT, CARDS_DRAWN_DICT, CONSTRUCTED_FORMATS, CONSTRUCTED_PLAY_TYPES, 
-    CUBE_FORMATS, DRAFT_FORMATS, DRAFT_PLAY_TYPES, LIMITED_FORMATS, HEADERS,
-    ADVENTURE_CARDS, COMMON_WORDS, SEALED_FORMATS, SEALED_PLAY_TYPES, SPLIT_CARDS, MULL_DICT
-    )
+    CUBE_FORMATS, DRAFT_FORMATS, DRAFT_PLAY_TYPES, GAME_HEADER, LIMITED_FORMATS, HEADERS,
+    ADVENTURE_CARDS, COMMON_WORDS, SEALED_FORMATS, SEALED_PLAY_TYPES, SPLIT_CARDS, MULL_DICT,
+    MATCHES_HEADER, PLAYS_HEADER)
 
 # To add a column to a database:
 # Add the column to MODO_DATA.HEADERS dict.
@@ -42,6 +42,28 @@ class MatchActions(list):
     def players(self):
         return players(self)
 
+def property_factory(index):
+    def getter(self):
+        return self[index]
+    def setter(self, value):
+        self[index] = value
+    return property(getter, setter)
+
+class GameData(list):
+    pass
+for category in GAME_HEADER:
+    exec(f'GameData.{category} = property_factory(GAME_HEADER.index("{category}"))')
+
+class MatchData(list):
+    pass
+for category in MATCHES_HEADER:
+    exec(f'MatchData.{category} = property_factory(MATCHES_HEADER.index("{category}"))')
+
+class PlayData(list):
+    pass
+for category in PLAYS_HEADER:
+    exec(f'PlayData.{category} = property_factory(PLAYS_HEADER.index("{category}"))')
+
 CARD_PATTERN = re.compile(r"@\[(.+?)@]")
 DIE_ROLL_PATTERN = re.compile(r"^(.*?) rolled a ([1-6])", re.MULTILINE)
 P1_P2_TRANSLATION = str.maketrans('12','21')
@@ -64,39 +86,25 @@ def clean_card_set(card_set: set[str]) -> set[str]:
             card_set.remove(card)
     return card_set
 
-def swap_cols(data,header: list,col_a,col_b):
-    # Input:  List[Matches or Games],List[Headers],String,String
-    # Output: List[Matches]   
-
-    a = header.index(col_a)
-    b = header.index(col_b)
-    data[a], data[b] = data[b], data[a]
-
 def invert_matchdata(data):
     # Input:  List[Matches]
     # Output: List[Matches]
-
-    swap_cols(data,HEADERS['Matches'],"P1","P2")
-    swap_cols(data,HEADERS['Matches'],"P1_Arch","P2_Arch")
-    swap_cols(data,HEADERS['Matches'],"P1_Subarch","P2_Subarch")
-    swap_cols(data,HEADERS['Matches'],"P1_Roll","P2_Roll")
-    swap_cols(data,HEADERS['Matches'],"P1_Wins","P2_Wins")
-    cols_to_invert = ["Match_Winner","Roll_Winner"]
-    for column in cols_to_invert:
-        index = HEADERS['Matches'].index(column)
-        data[index] = data[index].translate(P1_P2_TRANSLATION)
+    data.P1, data.P2 = data.P2, data.P1
+    data.P1_Arch, data.P2_Arch = data.P2_Arch, data.P1_Arch 
+    data.P1_Subarch, data.P2_Subarch = data.P2_Subarch, data.P1_Subarch 
+    data.P1_Roll, data.P2_Roll = data.P2_Roll, data.P1_Roll 
+    data.P1_Wins, data.P2_Wins = data.P2_Wins, data.P1_Wins 
+    data.Match_Winner = data.Match_Winner.translate(P1_P2_TRANSLATION)
+    data.Roll_Winner = data.Roll_Winner.translate(P1_P2_TRANSLATION)
 
 def invert_gamedata(data):
     # Input:  List[Games]
     # Output: List[Games]
-
-    swap_cols(data,HEADERS["Games"],"P1","P2")
-    swap_cols(data,HEADERS["Games"],"P1_Mulls","P2_Mulls")
-    swap_cols(data,HEADERS["Games"],"On_Play","On_Draw")
-    cols_to_invert = ["PD_Selector","Game_Winner"]
-    for i in cols_to_invert:
-        a = HEADERS['Games'].index(i)
-        data[a] = data[a].translate(P1_P2_TRANSLATION)
+    data.P1, data.P2 = data.P2, data.P1
+    data.P1_Mulls, data.P2_Mulls = data.P2_Mulls, data.P1_Mulls
+    data.On_Play, data.On_Draw = data.On_Draw, data.On_Play
+    data.PD_Selector = data.PD_Selector.translate(P1_P2_TRANSLATION)
+    data.Game_Winner = data.Game_Winner.translate(P1_P2_TRANSLATION)
 
 def invert_join(ad):
     # Input:  List[List[Matches],List[Games],List[Plays]]
@@ -114,35 +122,29 @@ def invert_join(ad):
 def update_game_wins(ad,timeout: dict[str, str]):
     #Input:  List[Matches,Games,Plays]
     #Output: List[Matches,Games,Plays]
-    
-    p1_index = HEADERS['Matches'].index("P1")
-    p2_index = HEADERS['Matches'].index("P2")
-    p1wins_index = HEADERS['Matches'].index("P1_Wins")
-    p2wins_index = HEADERS['Matches'].index("P2_Wins")
-    mw_index = HEADERS['Matches'].index("Match_Winner")
-    gw_index = HEADERS["Games"].index("Game_Winner")
 
     for match in ad[0]: # Iterate through Matches.
-        match[p1wins_index] = 0
-        match[p2wins_index] = 0
-        match[mw_index] = "NA"
-        for winner in [game[gw_index] for game in ad[1] if match[0] == game[0]]:
+        match.P1_Wins = 0
+        match.P2_Wins = 0
+        match.Match_Winner = "NA"
+        for winner in [game.Game_Winner for game in ad[1] 
+                    if match.Match_ID == game.Match_ID]:
             if winner == "P1":
-                match[p1wins_index] += 1
+                match.P1_Wins += 1
             elif winner == "P2":
-                match[p2wins_index] += 1
+                match.P2_Wins += 1
             elif winner == "NA":
                 pass
-        if match[p1wins_index] > match[p2wins_index]:
-            match[mw_index] = "P1"
-        elif match[p2wins_index] > match[p1wins_index]:
-            match[mw_index] = "P2"
+        if match.P1_Wins > match.P2_Wins:
+            match.Match_Winner = "P1"
+        elif match.P2_Wins > match.P1_Wins:
+            match.Match_Winner = "P2"
         else:
-            if match[0] in timeout:
-                if match[p1_index] == timeout[match[0]]:
-                    match[mw_index] = "P2"
-                elif match[p2_index] == timeout[match[0]]:
-                    match[mw_index] = "P1"
+            if match.Match_ID in timeout:
+                if match.P1 == timeout[match[0]]:
+                    match.Match_Winner = "P2"
+                elif match.P2 == timeout[match[0]]:
+                    match.Match_Winner = "P1"
 def players(game_log: Union[str, list[str]]) -> list[str]:
     """Parses a gamelog for player names.
 
@@ -451,7 +453,7 @@ def match_data(
     else:
         MATCH_WINNER = "P1" if P1_WINS > P2_WINS else 'P2'
 
-    return [
+    return MatchData([
         MATCH_ID,
         DRAFT_ID,
         alter(P1,original=True),
@@ -469,7 +471,7 @@ def match_data(
         MATCH_FORMAT,
         LIM_FORMAT,
         MATCH_TYPE,
-        DATE]
+        DATE])
 
 def get_winner(curr_game_list: list[str], p1: str, p2: str
     ) -> Union[Literal["NA"], Literal["P1"], Literal["P2"]]:
@@ -556,7 +558,7 @@ def game_data(
                 GAME_WINNER = get_winner(curr_game_list, P1, P2)
                 if GAME_WINNER == "NA":
                     ALL_GAMES_GA[f"{MATCH_ID}-{GAME_NUM}"] = curr_game_list
-                ALL_PARSED_GAMES.append([
+                ALL_PARSED_GAMES.append(GameData([
                     MATCH_ID,
                     alter(P1,original=True),
                     alter(P2,original=True),
@@ -568,7 +570,7 @@ def game_data(
                     P1_MULLS,
                     P2_MULLS,
                     TURNS,
-                    GAME_WINNER])
+                    GAME_WINNER]))
                 curr_game_list = []
         elif "chooses to" in action and "play first" in action:
             GAME_NUM += 1
@@ -591,7 +593,7 @@ def game_data(
     GAME_WINNER = get_winner(curr_game_list,P1,P2)
     if GAME_WINNER == "NA":
         ALL_GAMES_GA[f"{MATCH_ID}-{GAME_NUM}"] = curr_game_list
-    ALL_PARSED_GAMES.append([
+    ALL_PARSED_GAMES.append(GameData([
         MATCH_ID,
         alter(P1,original=True),
         alter(P2,original=True),
@@ -603,7 +605,7 @@ def game_data(
         P1_MULLS,
         P2_MULLS,
         TURNS,
-        GAME_WINNER])
+        GAME_WINNER]))
     return (ALL_PARSED_GAMES, ALL_GAMES_GA)
 
 def is_play(play: str) -> bool:
@@ -735,7 +737,7 @@ def play_data(game_actions: list[str]) -> list[list[Union[str, int]]]:
                         parse_targets(current_action, casting_player,
                                         p1 if casting_player == p2 else p2))
             play_num += 1
-            all_plays.append([
+            all_plays.append(PlayData([
                 match_id,
                 game_num,
                 play_num,
@@ -751,7 +753,7 @@ def play_data(game_actions: list[str]) -> list[list[Union[str, int]]]:
                 cards_drawn,
                 attackers,
                 alter(active_player,original=True),
-                alter(non_active_player,original=True)])
+                alter(non_active_player,original=True)]))
     return all_plays
 
 def get_all_data(

@@ -63,12 +63,12 @@ display_index =     0
 ln_per_page =       20
 curr_data =         pd.DataFrame()
 
-def save(exit):
+def save(exit: bool) -> None:
     global ask_to_save
     ask_to_save = False
 
     save_settings()
-    os.chdir(FILEPATH_ROOT + "\\" + "save")
+    os.chdir(FILEPATH_ROOT / "save")
 
     pickle.dump(ALL_DATA,open("ALL_DATA","wb"))
     pickle.dump(TIMEOUT,open("TIMEOUT","wb"))
@@ -155,7 +155,7 @@ def set_default_window_size():
             MAIN_WINDOW_SIZE = ("large",1823,780)
             ln_per_page = 35
 
-        os.chdir(FILEPATH_ROOT + "\\" + "save")
+        os.chdir(FILEPATH_ROOT / "save")
         pickle.dump(MAIN_WINDOW_SIZE,open("MAIN_WINDOW_SIZE","wb"))
         window.geometry(str(MAIN_WINDOW_SIZE[1]) + "x" + str(MAIN_WINDOW_SIZE[2]))
         update_status_bar(status="Default Window Size saved.")
@@ -368,7 +368,7 @@ def delete_session():
 
     def del_session():
         save_files = ["ALL_DATA","DRAFTS_TABLE","PICKS_TABLE","TIMEOUT","PARSED_FILE_DICT","PARSED_DRAFT_DICT","SETTINGS","MAIN_WINDOW_SIZE"]
-        os.chdir(FILEPATH_ROOT + "\\" + "save")   
+        os.chdir(FILEPATH_ROOT / "save")   
 
         session_exists = False
         for i in save_files:
@@ -474,19 +474,19 @@ def startup():
         INPUT_OPTIONS["Booster Draft Formats"] = DRAFT_FORMATS
         INPUT_OPTIONS["Sealed Formats"] = SEALED_FORMATS
     
-    FILEPATH_ROOT = os.getcwd()
+    FILEPATH_ROOT = Path(os.getcwd())
     if os.path.isdir("save") == False:
-        os.mkdir(FILEPATH_ROOT + "\\" + "save")
+        os.mkdir(FILEPATH_ROOT / "save")
     if os.path.isdir("export") == False:
-        os.mkdir(FILEPATH_ROOT + "\\" + "export") 
+        os.mkdir(FILEPATH_ROOT / "export") 
     if os.path.isdir("gamelogs") == False:
-        os.mkdir(FILEPATH_ROOT + "\\" + "gamelogs")
+        os.mkdir(FILEPATH_ROOT / "gamelogs")
     if os.path.isdir("draftlogs") == False:
-        os.mkdir(FILEPATH_ROOT + "\\" + "draftlogs")
-    FILEPATH_EXPORT = FILEPATH_ROOT + "\\" + "export"
-    FILEPATH_LOGS_COPY = FILEPATH_ROOT + "\\" + "gamelogs"
-    FILEPATH_DRAFTS_COPY = FILEPATH_ROOT + "\\" + "draftlogs"
-    os.chdir(FILEPATH_ROOT + "\\" + "save")
+        os.mkdir(FILEPATH_ROOT / "draftlogs")
+    FILEPATH_EXPORT = FILEPATH_ROOT / "export"
+    FILEPATH_LOGS_COPY = FILEPATH_ROOT / "gamelogs"
+    FILEPATH_DRAFTS_COPY = FILEPATH_ROOT / "draftlogs"
+    os.chdir(FILEPATH_ROOT / "save")
 
     if os.path.isfile("SETTINGS"):
         SETTINGS = pickle.load(open("SETTINGS","rb"))
@@ -531,7 +531,7 @@ def startup():
     ask_to_save = False
     os.chdir(FILEPATH_ROOT)
 def save_settings():
-    os.chdir(FILEPATH_ROOT + "\\" + "save")
+    os.chdir(FILEPATH_ROOT / "save")
     SETTINGS = [FILEPATH_ROOT,FILEPATH_EXPORT,FILEPATH_LOGS,FILEPATH_LOGS_COPY,FILEPATH_DRAFTS,FILEPATH_DRAFTS_COPY,HERO]
     pickle.dump(SETTINGS,open("SETTINGS","wb"))
     pickle.dump(MAIN_WINDOW_SIZE,open("MAIN_WINDOW_SIZE","wb"))
@@ -5212,7 +5212,7 @@ def associated_draftid_window(list_to_process,index,total):
             ask_to_save = True
         subwindow.grab_release()
         subwindow.destroy()
-             
+
     height = 375
     width =  450                
     subwindow = tk.Toplevel(window)
@@ -5278,7 +5278,7 @@ def associated_draftid_window(list_to_process,index,total):
     
     label1.grid(row=0,column=0,sticky="nsew",padx=5,pady=5)
     label2.grid(row=0,column=0,sticky="nsew",padx=5,pady=5)
-  
+
     button_skip.grid(row=0,column=0,padx=10,pady=10)
     label_message.grid(row=0,column=1,padx=10,pady=10)
     button_exit.grid(row=0,column=2,padx=10,pady=10)
