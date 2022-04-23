@@ -44,6 +44,7 @@ class MatchActions(list):
 
 CARD_PATTERN = re.compile(r"@\[(.+?)@]")
 DIE_ROLL_PATTERN = re.compile(r"^(.*?) rolled a ([1-6])", re.MULTILINE)
+P1_P2_TRANSLATION = str.maketrans('12','21')
 
 def clean_card_set(card_set: set[str]) -> set[str]:
     """Fixes sets of adventure and split card names for draft.
@@ -63,44 +64,43 @@ def clean_card_set(card_set: set[str]) -> set[str]:
             card_set.remove(card)
     return card_set
 
+def swap_cols(data,header: list,col_a,col_b):
+    # Input:  List[Matches or Games],List[Headers],String,String
+    # Output: List[Matches]   
+
+    a = header.index(col_a)
+    b = header.index(col_b)
+    data[a], data[b] = data[b], data[a]
+
+def invert_matchdata(data):
+    # Input:  List[Matches]
+    # Output: List[Matches]
+
+    swap_cols(data,HEADERS['Matches'],"P1","P2")
+    swap_cols(data,HEADERS['Matches'],"P1_Arch","P2_Arch")
+    swap_cols(data,HEADERS['Matches'],"P1_Subarch","P2_Subarch")
+    swap_cols(data,HEADERS['Matches'],"P1_Roll","P2_Roll")
+    swap_cols(data,HEADERS['Matches'],"P1_Wins","P2_Wins")
+    cols_to_invert = ["Match_Winner","Roll_Winner"]
+    for column in cols_to_invert:
+        index = HEADERS['Matches'].index(column)
+        data[index] = data[index].translate(P1_P2_TRANSLATION)
+
+def invert_gamedata(data):
+    # Input:  List[Games]
+    # Output: List[Games]
+
+    swap_cols(data,HEADERS["Games"],"P1","P2")
+    swap_cols(data,HEADERS["Games"],"P1_Mulls","P2_Mulls")
+    swap_cols(data,HEADERS["Games"],"On_Play","On_Draw")
+    cols_to_invert = ["PD_Selector","Game_Winner"]
+    for i in cols_to_invert:
+        a = HEADERS['Games'].index(i)
+        data[a] = data[a].translate(P1_P2_TRANSLATION)
+
 def invert_join(ad):
     # Input:  List[List[Matches],List[Games],List[Plays]]
     # Output: List[List[Matches],List[Games],List[Plays]]
-
-    def swap_cols(data,header: list,col_a,col_b):
-        # Input:  List[Matches or Games],List[Headers],String,String
-        # Output: List[Matches]   
-
-        a = header.index(col_a)
-        b = header.index(col_b)
-        data[a], data[b] = data[b], data[a]
-
-    def invert_matchdata(data):
-        # Input:  List[Matches]
-        # Output: List[Matches]
-
-        swap_cols(data,HEADERS['Matches'],"P1","P2")
-        swap_cols(data,HEADERS['Matches'],"P1_Arch","P2_Arch")
-        swap_cols(data,HEADERS['Matches'],"P1_Subarch","P2_Subarch")
-        swap_cols(data,HEADERS['Matches'],"P1_Roll","P2_Roll")
-        swap_cols(data,HEADERS['Matches'],"P1_Wins","P2_Wins")
-        cols_to_invert = ["Match_Winner","Roll_Winner"]
-        for column in cols_to_invert:
-            index = HEADERS['Matches'].index(column)
-            data[index] = "P1" if data[index] == 'P2' else 'P2'
-
-    def invert_gamedata(data):
-        # Input:  List[Games]
-        # Output: List[Games]
-
-        swap_cols(data,HEADERS["Games"],"P1","P2")
-        swap_cols(data,HEADERS["Games"],"P1_Mulls","P2_Mulls")
-        swap_cols(data,HEADERS["Games"],"On_Play","On_Draw")
-        cols_to_invert = ["PD_Selector","Game_Winner"]
-        for i in cols_to_invert:
-            a = HEADERS['Games'].index(i)
-            data[a] = "P1" if data[a] == 'P2' else 'P2'
-
     ad_inverted = copy.deepcopy(ad)
     for i in ad_inverted[0]:
         invert_matchdata(i)
@@ -110,6 +110,7 @@ def invert_join(ad):
     ad_inverted[0] += ad[0]
     ad_inverted[1] += ad[1]
     return ad_inverted
+
 def update_game_wins(ad,timeout: dict[str, str]):
     #Input:  List[Matches,Games,Plays]
     #Output: List[Matches,Games,Plays]
@@ -124,9 +125,9 @@ def update_game_wins(ad,timeout: dict[str, str]):
     for match in ad[0]: # Iterate through Matches.
         match[p1wins_index] = 0
         match[p2wins_index] = 0
-        match[mw_index]     = "NA"
-        for winner in [game[gw_index] for game in ad[1] if match[0] == game[0]]: # Iterate through Games.
-            if winner == "P1": # Check if P1 or P2 won the game.
+        match[mw_index] = "NA"
+        for winner in [game[gw_index] for game in ad[1] if match[0] == game[0]]:
+            if winner == "P1":
                 match[p1wins_index] += 1
             elif winner == "P2":
                 match[p2wins_index] += 1
@@ -613,10 +614,9 @@ def is_play(play: str) -> bool:
         "activates an ability of",]
     curr_list = play.split()
     if len(curr_list) > 1:
-        for i in action_keyphrases:
-            if i in play:
-                return True
         if curr_list[1] in action_keywords:
+            return True
+        if any([phrase in play for phrase in action_keyphrases]):
             return True
     return False
 
