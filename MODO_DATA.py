@@ -1,3 +1,4 @@
+import re
 MULL_DICT = {"seven":0,"six":1,"five":2,"four":3,"three":4,"two":5,"one":6,"zero":7}
 SPLIT_CARDS = {
     'Alive': 'Alive/Well',
@@ -432,3 +433,7 @@ COMMON_WORDS = [
     'draw',
     'library'
 ]
+
+CARD_PATTERN = re.compile(r"@\[(.+?)@]")
+DIE_ROLL_PATTERN = re.compile(r"^(.*?) rolled a ([1-6])", re.MULTILINE)
+P1_P2_TRANSLATION = str.maketrans('12','21')
