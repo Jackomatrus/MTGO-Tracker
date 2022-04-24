@@ -1,13 +1,14 @@
 # MODO GameLog Cleaning Module
 import copy
-from time import strftime, struct_time, gmtime
-from typing import Literal, Pattern, Union
+from time import strftime, struct_time
+from typing import Literal, Union
 import re
 from MODO_DATA import (
     BASIC_LAND_DICT, CARDS_DRAWN_DICT, CONSTRUCTED_FORMATS, CONSTRUCTED_PLAY_TYPES, 
     CUBE_FORMATS, DRAFT_FORMATS, DRAFT_PLAY_TYPES, GAME_HEADER, LIMITED_FORMATS, HEADERS,
     ADVENTURE_CARDS, COMMON_WORDS, SEALED_FORMATS, SEALED_PLAY_TYPES, SPLIT_CARDS, MULL_DICT,
-    MATCHES_HEADER, PLAYS_HEADER)
+    MATCHES_HEADER, PLAYS_HEADER, CARD_PATTERN, DIE_ROLL_PATTERN, P1_P2_TRANSLATION)
+from datatypes import MatchActions, GameData, MatchData, PlayData
 
 # To add a column to a database:
 # Add the column to MODO_DATA.HEADERS dict.
@@ -18,55 +19,9 @@ from MODO_DATA import (
 # Add the option to the appropriate list below.
 # Add the option under the appropriate header in the input_options.txt file.
 
-# for future use maybe
-class MatchActions(list):
-    def __init__(self, *args):
-        super(MatchActions, self).__init__(*args)
-    
-    @property
-    def match_id(self):
-        if len(self):
-            return self[0]
-        else:
-            return "NA"
-    @match_id.setter
-    def match_id(self, new):
-        match_id_re = re.compile(r'[0-9a-zA-Z-]{36}_.+?_.+')
-        if not match_id_re.fullmatch(new):
-            raise ValueError(
-                f'Match_ID needs to be 36 characters followed by '
-                f'_P1name_P2name, got\n{new}')
-        self[0] = new
-    
-    @property
-    def players(self):
-        return players(self)
 
-def property_factory(index):
-    def getter(self):
-        return self[index]
-    def setter(self, value):
-        self[index] = value
-    return property(getter, setter)
 
-class GameData(list):
-    pass
-for category in GAME_HEADER:
-    exec(f'GameData.{category} = property_factory(GAME_HEADER.index("{category}"))')
 
-class MatchData(list):
-    pass
-for category in MATCHES_HEADER:
-    exec(f'MatchData.{category} = property_factory(MATCHES_HEADER.index("{category}"))')
-
-class PlayData(list):
-    pass
-for category in PLAYS_HEADER:
-    exec(f'PlayData.{category} = property_factory(PLAYS_HEADER.index("{category}"))')
-
-CARD_PATTERN = re.compile(r"@\[(.+?)@]")
-DIE_ROLL_PATTERN = re.compile(r"^(.*?) rolled a ([1-6])", re.MULTILINE)
-P1_P2_TRANSLATION = str.maketrans('12','21')
 
 def clean_card_set(card_set: set[str]) -> set[str]:
     """Fixes sets of adventure and split card names for draft.
@@ -86,7 +41,7 @@ def clean_card_set(card_set: set[str]) -> set[str]:
             card_set.remove(card)
     return card_set
 
-def invert_matchdata(data):
+def invert_matchdata(data: MatchData):
     # Input:  List[Matches]
     # Output: List[Matches]
     data.P1, data.P2 = data.P2, data.P1
@@ -97,7 +52,7 @@ def invert_matchdata(data):
     data.Match_Winner = data.Match_Winner.translate(P1_P2_TRANSLATION)
     data.Roll_Winner = data.Roll_Winner.translate(P1_P2_TRANSLATION)
 
-def invert_gamedata(data):
+def invert_gamedata(data: GameData):
     # Input:  List[Games]
     # Output: List[Games]
     data.P1, data.P2 = data.P2, data.P1
@@ -106,9 +61,8 @@ def invert_gamedata(data):
     data.PD_Selector = data.PD_Selector.translate(P1_P2_TRANSLATION)
     data.Game_Winner = data.Game_Winner.translate(P1_P2_TRANSLATION)
 
-def invert_join(ad):
-    # Input:  List[List[Matches],List[Games],List[Plays]]
-    # Output: List[List[Matches],List[Games],List[Plays]]
+def invert_join(ad: tuple[list[MatchData], list[GameData], list[PlayData]]
+    ) -> tuple[list[MatchData], list[GameData], list[PlayData]]:
     ad_inverted = copy.deepcopy(ad)
     for i in ad_inverted[0]:
         invert_matchdata(i)
@@ -119,7 +73,9 @@ def invert_join(ad):
     ad_inverted[1] += ad[1]
     return ad_inverted
 
-def update_game_wins(ad,timeout: dict[str, str]):
+def update_game_wins(
+    ad: tuple[list[MatchData], list[GameData], list[PlayData]],
+    timeout: dict[str, str]) -> None:
     #Input:  List[Matches,Games,Plays]
     #Output: List[Matches,Games,Plays]
 
@@ -141,9 +97,9 @@ def update_game_wins(ad,timeout: dict[str, str]):
             match.Match_Winner = "P2"
         else:
             if match.Match_ID in timeout:
-                if match.P1 == timeout[match[0]]:
+                if match.P1 == timeout[match.Match_ID]:
                     match.Match_Winner = "P2"
-                elif match.P2 == timeout[match[0]]:
+                elif match.P2 == timeout[match.Match_ID]:
                     match.Match_Winner = "P1"
 def players(game_log: Union[str, list[str]]) -> list[str]:
     """Parses a gamelog for player names.
@@ -290,12 +246,12 @@ def check_timeout(
             If someone timed out, string is the player's name.
     """
     for action in game_actions:
-        for reason in [
-        " has lost the game due to disconnection",
-        " has run out of time and has lost the match"]:
-            if reason in action:
-                player_name = action.split(reason)[0]
-                return (True, player_name)
+        if any(reason in action for reason in [
+            " has lost the game due to disconnection",
+            " has run out of time and has lost the match"
+            ]):
+            player_name = action.split()[0]
+            return (True, player_name)
     return (False,None)
 
 def remove_text_artifacts(game_action: str) -> str:
@@ -358,7 +314,7 @@ def new_turn_regex(players: list[str]) -> re.Pattern:
     player_group_string = f"({'|'.join(escaped_and_altered)})"
     return re.compile(r'Turn (\d+): ' + player_group_string)
 
-def all_actions(game_log: str) -> list[str]:
+def all_actions(game_log: str) -> MatchActions:
     # Input:  String
     # Output: List[Strings]
     match_actions = MatchActions([get_match_id(game_log)])
@@ -417,61 +373,45 @@ def high_roll(game_actions: Union[str, list[str]]) -> dict[str, int]:
             for player, roll in DIE_ROLL_PATTERN.findall(game_actions)}
     return rolls
 
-def match_data(
-    match_actions: list[str], 
-    all_games: list[list[Union[str, int]]], 
+def get_match_data(
+    match_actions: MatchActions, 
+    all_games: list[GameData], 
     log_last_modified: struct_time
-    ) -> list[Union[str, int]]:
+    ) -> MatchData:
     # Input:  List[GameActions],List[GameData],List[PlayData]
     # Output: List[Match_Attributes]
 
-    P1, P2 = players(match_actions)[0:2]
-    P1_ARCH = P1_SUBARCH = P2_ARCH = P2_SUBARCH = "NA"
-    LIM_FORMAT = DRAFT_ID = MATCH_TYPE = MATCH_FORMAT = 'NA'
+    match = MatchData()
+    match.P1, match.P2 = players(match_actions)[0:2]
+    match.P1_Arch = match.P1_Subarch = match.P2_Arch = 'NA'
+    match.P2_Subarch = match.Limited_Format = 'NA'
+    match.Draft_ID = match.Match_Type = match.Format = 'NA'
     try:
         rolls = high_roll(match_actions)
-        P1_ROLL = rolls[P1]
-        P2_ROLL = rolls[P2]
+        match.P1_Roll = rolls[match.P1]
+        match.P2_Roll = rolls[match.P2]
     except KeyError:
         raise ValueError(
-            f"Game with players {P1} and {P2} doesn't have die rolls")
-    P1_WINS = P2_WINS = 0
-    MATCH_WINNER = ""
-    DATE = strftime(r'%Y-%m-%d-%H:%M', log_last_modified)
-    MATCH_ID = match_actions[0]
-    assert all(game[0] == MATCH_ID for game in all_games), (
-        f"game data match_id doesn't match game action's match_id. gd:{all_games}")
-    ROLL_WINNER = "P1" if P1_ROLL > P2_ROLL else 'P2'
-    winners = [game[HEADERS["Games"].index("Game_Winner")] for game in all_games]
-    P1_WINS = winners.count('P1')
-    P2_WINS = winners.count('P2')
+            f"No die rolls in Game with players {match.P1} and {match.P2}")
+    match.P1_Wins = match.P2_Wins = 0
+    match.Date = strftime(r'%Y-%m-%d-%H:%M', log_last_modified)
+    assert all(game.Match_ID == match_actions.match_id for game in all_games), (
+        f"game data match_id doesn't match game action's match_id. {all_games=}")
+    match.Roll_Winner = "P1" if match.P1_Roll > match.P2_Roll else 'P2'
+    winners = [game.Game_Winner for game in all_games]
+    match.P1_Wins = winners.count('P1')
+    match.P2_Wins = winners.count('P2')
     timeout = check_timeout(match_actions)
     if timeout[0]:
-        MATCH_WINNER = "P1" if timeout[1] == P2 else 'P2'
-    elif P1_WINS == P2_WINS:
-        MATCH_WINNER = "NA"
+        match.Match_Winner = "P1" if timeout[1] == match.P2 else 'P2'
+    elif match.P1_Wins == match.P2_Wins:
+        match.Match_Winner = "NA"
     else:
-        MATCH_WINNER = "P1" if P1_WINS > P2_WINS else 'P2'
-
-    return MatchData([
-        MATCH_ID,
-        DRAFT_ID,
-        alter(P1,original=True),
-        P1_ARCH,
-        P1_SUBARCH,
-        alter(P2,original=True),
-        P2_ARCH,
-        P2_SUBARCH,
-        P1_ROLL,
-        P2_ROLL,
-        ROLL_WINNER,
-        P1_WINS,
-        P2_WINS,
-        MATCH_WINNER,
-        MATCH_FORMAT,
-        LIM_FORMAT,
-        MATCH_TYPE,
-        DATE])
+        match.Match_Winner = "P1" if match.P1_Wins > match.P2_Wins else 'P2'
+    match.P1 = alter(match.P1,original=True)
+    match.P2 = alter(match.P2,original=True)
+    match.Match_ID = match_actions.match_id
+    return match
 
 def get_winner(curr_game_list: list[str], p1: str, p2: str
     ) -> Union[Literal["NA"], Literal["P1"], Literal["P2"]]:
@@ -643,7 +583,7 @@ def parse_targets(
     opp_target = int(other_player in without_brackets)
     return (target_1, target_2, target_3, self_target, opp_target)
 
-def play_data(game_actions: list[str]) -> list[list[Union[str, int]]]:
+def play_data(game_actions: MatchActions) -> list[list[Union[str, int]]]:
     """Parses a list of actions into a list of machine readable plays.
 
     Args:
@@ -658,18 +598,19 @@ def play_data(game_actions: list[str]) -> list[list[Union[str, int]]]:
             non_active_player]
             opp_target, self_target are ints. Rest should be obvious.
     """
-
+    
     all_plays = []
-    game_num = turn_num = play_num = 0
-    active_player = non_active_player = ""
-    p1, p2 = players(game_actions)[0:2]
+    p1, p2 = game_actions.players[0:2]
     turn_regex = new_turn_regex([p1,p2])
-    match_id = game_actions[0]
+    game_num = turn_num = play_num = 0
+    active_player = nonactive_player = ''
 
     for current_action in game_actions:
-        casting_player = action_type = ""
-        primary_card = target_1 = target_2 = target_3 = "NA"
-        opp_target = self_target = cards_drawn = attackers = 0
+        play = PlayData()
+        play.Match_ID = game_actions.match_id
+        play.Casting_Player = play.Action = ""
+        play.Primary_Card = play.Target1 = play.Target2 = play.Target3 = "NA"
+        play.Opp_Target = play.Self_Target = play.Cards_Drawn = play.Attackers = 0
         new_turn_match = turn_regex.search(current_action)
         curr_word_list = current_action.split()
         cards_in_action = CARD_PATTERN.findall(current_action)
@@ -679,81 +620,65 @@ def play_data(game_actions: list[str]) -> list[list[Union[str, int]]]:
         elif new_turn_match:
             turn_num = int(new_turn_match[1])
             active_player = new_turn_match[2]
-            non_active_player = p2 if active_player == p1 else p1
+            nonactive_player = p2 if active_player == p1 else p1
         elif is_play(current_action):
             if curr_word_list[1] == "plays":
-                casting_player = curr_word_list[0]
-                primary_card = cards_in_action[0] if cards_in_action else 'NA'
-                action_type = "Land Drop"
+                play.Casting_Player = curr_word_list[0]
+                play.Primary_Card = cards_in_action[0] if cards_in_action else 'NA'
+                play.Action = "Land Drop"
             elif curr_word_list[1] == "casts":
-                casting_player = curr_word_list[0]
-                primary_card = cards_in_action[0] if cards_in_action else 'NA'
-                action_type = 'Casts'
+                play.Casting_Player = curr_word_list[0]
+                play.Primary_Card = cards_in_action[0] if cards_in_action else 'NA'
+                play.Action = 'Casts'
                 if "targeting" in current_action:
-                    target_1, target_2, target_3, self_target, opp_target = (
-                        parse_targets(current_action, casting_player,
-                                        p1 if casting_player == p2 else p2))
+                    play.parse_targets(current_action)
             elif curr_word_list[1] == "draws":
-                casting_player = curr_word_list[0]
-                action_type = 'Draws'
-                cards_drawn = CARDS_DRAWN_DICT.get(curr_word_list[2], 8)
+                play.Casting_Player = curr_word_list[0]
+                play.Action = 'Draws'
+                play.Cards_Drawn = CARDS_DRAWN_DICT.get(curr_word_list[2], 8)
             elif curr_word_list[1] == "chooses":
                 continue
             elif current_action.find("activates an ability of") != -1:
-                casting_player = curr_word_list[0]
+                play.Casting_Player = curr_word_list[0]
                 if cards_in_action:
-                    primary_card = cards_in_action[0]
+                    play.Primary_Card = cards_in_action[0]
                 else:
-                    primary_card = current_action.split(
+                    play.Primary_Card = current_action.split(
                         "activates an ability of ")[1].split(" (")[0]
                     # MODO Bug Encountered. Primary_Card = "NA"
-                    if primary_card in (p1,p2):
-                        primary_card = "NA"
-                action_type = "Activated Ability"
+                    if play.Primary_Card in (p1,p2):
+                        play.Primary_Card = "NA"
+                play.Action = "Activated Ability"
                 if "targeting" in current_action:
-                    target_1, target_2, target_3, self_target, opp_target = (
-                        parse_targets(current_action, casting_player,
-                                        p1 if casting_player == p2 else p2))
+                    play.parse_targets(current_action)
             elif curr_word_list[1] == "discards":
-                casting_player = curr_word_list[0]
-                action_type = 'Discards'
-                primary_card = cards_in_action[0] if cards_in_action else 'NA'
+                play.Casting_Player = curr_word_list[0]
+                play.Action = 'Discards'
+                play.Primary_Card = cards_in_action[0] if cards_in_action else 'NA'
             elif "is being attacked by" in current_action:
-                casting_player = active_player
-                action_type = "Attacks"
-                attackers = len(CARD_PATTERN.findall(current_action.split("is being attacked by")[1]))
+                play.Casting_Player = active_player
+                play.Action = "Attacks"
+                play.Attackers = len(CARD_PATTERN.findall(current_action.split("is being attacked by")[1]))
             elif "puts triggered ability from" in current_action:
-                casting_player = curr_word_list[0]
+                play.Casting_Player = curr_word_list[0]
                 if cards_in_action:
-                    primary_card = cards_in_action[0]
+                    play.Primary_Card = cards_in_action[0]
                 else:
-                    primary_card = current_action.split("triggered ability from ")[1].split(" onto the stack ")[0]
+                    play.Primary_Card = current_action.split("triggered ability from ")[1].split(" onto the stack ")[0]
                     # MODO Bug Encountered. Primary_Card = "NA"
-                    if primary_card in (p1,p2):
-                        primary_card = "NA"
-                action_type = "Triggers"
+                    if play.Primary_Card in (p1,p2):
+                        play.Primary_Card = "NA"
+                play.Action = "Triggers"
                 if "targeting" in current_action:
-                    target_1, target_2, target_3, self_target, opp_target = (
-                        parse_targets(current_action, casting_player,
-                                        p1 if casting_player == p2 else p2))
+                    play.parse_targets(current_action)
             play_num += 1
-            all_plays.append(PlayData([
-                match_id,
-                game_num,
-                play_num,
-                turn_num,
-                alter(casting_player,original=True),
-                action_type,
-                primary_card,
-                target_1,
-                target_2,
-                target_3,
-                opp_target,
-                self_target,
-                cards_drawn,
-                attackers,
-                alter(active_player,original=True),
-                alter(non_active_player,original=True)]))
+            play.Active_Player = alter(active_player, original=True)
+            play.Nonactive_Player = alter(nonactive_player, original=True)
+            play.Casting_Player = alter(play.Casting_Player, original=True)
+            play.Play_Num = play_num
+            play.Game_Num = game_num
+            play.Turn_Num = turn_num
+            all_plays.append(play)
     return all_plays
 
 def get_all_data(
@@ -774,7 +699,7 @@ def get_all_data(
     if isinstance(gamedata, str):
         return gamedata
     playdata = play_data(match_actions)
-    matchdata = match_data(match_actions, gamedata[0], file_last_modified)
+    matchdata = get_match_data(match_actions, gamedata[0], file_last_modified)
     timeout = check_timeout(match_actions)
 
     return (matchdata,gamedata[0],playdata,gamedata[1],timeout)
