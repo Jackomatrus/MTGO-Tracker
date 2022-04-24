@@ -1084,7 +1084,7 @@ def revise_entry_window(players,cards1,cards2,card3,cards4,progress,mdata):
             ask_to_save = True
         subwindow.grab_release()
         subwindow.destroy()
-             
+
     height = 450
     width =  650                
     subwindow = tk.Toplevel(window)
