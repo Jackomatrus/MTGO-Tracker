@@ -8,7 +8,7 @@ class MatchActions(list):
         super(MatchActions, self).__init__(*args)
     
     @property
-    def match_id(self):
+    def match_id(self) -> str:
         if len(self):
             return self[0]
         else:
@@ -110,6 +110,11 @@ class PlayData(list):
         self.extend([''] * (16 - len(self)))
     
     def parse_targets(self, action_string: str) -> None:
+        """Sets the target of this play by parsing the whole log line.
+
+        Args:
+            action_string (str): The line in the game log that describes this play.
+        """
         self.Target1 = self.Target2 = self.Target3 = 'NA'
         self.Opp_Target = self.Self_Target = 0
         if 'targeting' not in action_string:
