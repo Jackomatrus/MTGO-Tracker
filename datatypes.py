@@ -140,8 +140,7 @@ class PlayData(list):
 class AllData(list):
     def __init__(self, *args):
         if len(args) == 0:
-            self = [[],[],[],{}]
-            return
+            super(AllData, self).__init__([[],[],[],{}])
         else:
             super(AllData, self).__init__(*args)
     matches = property_factory(0)

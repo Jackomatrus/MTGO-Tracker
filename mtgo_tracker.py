@@ -28,8 +28,8 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 pd.options.mode.chained_assignment = None
 
 # Saved data:
-ALL_DATA =          [[],[],[],{}]
-ALL_DATA_INVERTED = [[],[],[],{}]
+ALL_DATA =          AllData()
+ALL_DATA_INVERTED = AllData()
 ALL_DECKS =         {}
 TIMEOUT =           {}
 DRAFTS_TABLE =      []
@@ -215,8 +215,8 @@ def clear_loaded():
     global uaw
     global ask_to_save
 
-    ALL_DATA =          [[],[],[],{}]
-    ALL_DATA_INVERTED = [[],[],[],{}]
+    ALL_DATA = AllData()
+    ALL_DATA_INVERTED = AllData()
     DRAFTS_TABLE =      []
     PICKS_TABLE =       []
     PARSED_FILE_DICT.clear()
@@ -4615,7 +4615,7 @@ def get_stats():
         update_deck_menu()
         update_opp_deck_menu()
         update_opp_menu()
-       
+
         menu_2["state"]   = "readonly"
         menu_4["state"]   = "readonly"
         menu_5["state"]   = "readonly"

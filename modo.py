@@ -8,7 +8,7 @@ from MODO_DATA import (
     CUBE_FORMATS, DRAFT_FORMATS, DRAFT_PLAY_TYPES, GAME_HEADER, LIMITED_FORMATS, HEADERS,
     ADVENTURE_CARDS, COMMON_WORDS, SEALED_FORMATS, SEALED_PLAY_TYPES, SPLIT_CARDS, MULL_DICT,
     MATCHES_HEADER, PLAYS_HEADER, CARD_PATTERN, DIE_ROLL_PATTERN, P1_P2_TRANSLATION)
-from datatypes import MatchActions, GameData, MatchData, PlayData
+from datatypes import MatchActions, GameData, MatchData, PlayData, AllData
 
 # To add a column to a database:
 # Add the column to MODO_DATA.HEADERS dict.
@@ -18,10 +18,6 @@ from datatypes import MatchActions, GameData, MatchData, PlayData
 # To add a menu option to dropdowns in revision windows:
 # Add the option to the appropriate list below.
 # Add the option under the appropriate header in the input_options.txt file.
-
-
-
-
 
 def clean_card_set(card_set: set[str]) -> set[str]:
     """Fixes sets of adventure and split card names for draft.
@@ -61,29 +57,43 @@ def invert_gamedata(data: GameData):
     data.PD_Selector = data.PD_Selector.translate(P1_P2_TRANSLATION)
     data.Game_Winner = data.Game_Winner.translate(P1_P2_TRANSLATION)
 
-def invert_join(ad: tuple[list[MatchData], list[GameData], list[PlayData]]
-    ) -> tuple[list[MatchData], list[GameData], list[PlayData]]:
-    ad_inverted = copy.deepcopy(ad)
-    for i in ad_inverted[0]:
-        invert_matchdata(i)
-    for i in ad_inverted[1]:
-        invert_gamedata(i)
+def invert_join(ad: AllData) -> AllData:
+    """Invert P1 and P2 in all match and game data provided and also keep original data.
 
-    ad_inverted[0] += ad[0]
-    ad_inverted[1] += ad[1]
+    Args:
+        ad AllData: The original data.
+
+    Returns:
+        AllData: Game and Match lists 
+            will be twice as long because every original entry will be there 
+            in addition to every reversed entry.
+    """
+    ad_inverted = AllData(copy.deepcopy(ad))
+    for match in ad_inverted.matches:
+        invert_matchdata(match)
+    for game in ad_inverted.games:
+        invert_gamedata(game)
+    ad_inverted.matches.extend(ad.matches)
+    ad_inverted.games.extend(ad.games)
     return ad_inverted
 
 def update_game_wins(
-    ad: tuple[list[MatchData], list[GameData], list[PlayData]],
+    all_data: AllData,
     timeout: dict[str, str]) -> None:
-    #Input:  List[Matches,Games,Plays]
-    #Output: List[Matches,Games,Plays]
+    """Modifies the list of Matches of the provided all_data in place, 
+        updating match wins.
 
-    for match in ad[0]: # Iterate through Matches.
+    Args:
+        all_data (AllData): 
+            A tuple of match, game, and play data like returned from get_all_data
+        timeout (dict[str, str]): Mapping of match_id to the player name that timed out.
+    """
+
+    for match in all_data[0]: # Iterate through Matches.
         match.P1_Wins = 0
         match.P2_Wins = 0
         match.Match_Winner = "NA"
-        for winner in [game.Game_Winner for game in ad[1] 
+        for winner in [game.Game_Winner for game in all_data[1] 
                     if match.Match_ID == game.Match_ID]:
             if winner == "P1":
                 match.P1_Wins += 1
@@ -101,6 +111,7 @@ def update_game_wins(
                     match.Match_Winner = "P2"
                 elif match.P2 == timeout[match.Match_ID]:
                     match.Match_Winner = "P1"
+
 def players(game_log: Union[str, list[str]]) -> list[str]:
     """Parses a gamelog for player names.
 
@@ -140,11 +151,11 @@ def alter(player_name: str, original: bool=False) -> str:
     """
     if original:
         player = player_name.replace("+"," ")
-        player = player.replace("*",".")
+        return player.replace("*",".")
     else:
         player = player_name.replace(" ","+")
-        player = player.replace(".","*")
-    return player
+        return player.replace(".","*")
+
 def closest_list(
     cards_played: set[str],
     ad: dict[str, tuple[str, str, set[str]]],
@@ -233,8 +244,8 @@ def parse_list(filename: str, file_content: str) -> tuple[str, str, set[str]]:
             target.extend((card,) * int(card_count))
     return (deck_name,deck_format,set(maindeck))
 
-def check_timeout(
-    game_actions: list[str]) -> tuple[bool, Union[Literal[None], str]]:
+def check_timeout(game_actions: list[str]
+    ) -> tuple[bool, Union[Literal[None], str]]:
     """Checks whether a player has timed out in a list of game actions.
 
     Args:
@@ -581,44 +592,45 @@ def play_data(game_actions: MatchActions) -> list[PlayData]:
             turn_num = int(new_turn_match[1])
             active_player = new_turn_match[2]
             nonactive_player = p2 if active_player == p1 else p1
-        elif is_play(current_action):
+        elif is_play(current_action) and curr_word_list[1] != "chooses":
+            all_plays.append(play)
+            play_num += 1
+            play.Active_Player = alter(active_player, original=True)
+            play.Nonactive_Player = alter(nonactive_player, original=True)
+            play.Casting_Player = alter(curr_word_list[0], original=True)
+            play.Play_Num = play_num
+            play.Game_Num = game_num
+            play.Turn_Num = turn_num
             if curr_word_list[1] == "plays":
-                play.Casting_Player = curr_word_list[0]
                 play.Primary_Card = cards_in_action[0] if cards_in_action else 'NA'
                 play.Action = "Land Drop"
             elif curr_word_list[1] == "casts":
-                play.Casting_Player = curr_word_list[0]
                 play.Primary_Card = cards_in_action[0] if cards_in_action else 'NA'
                 play.Action = 'Casts'
                 if "targeting" in current_action:
                     play.parse_targets(current_action)
             elif curr_word_list[1] == "draws":
-                play.Casting_Player = curr_word_list[0]
                 play.Action = 'Draws'
                 play.Cards_Drawn = CARDS_DRAWN_DICT.get(curr_word_list[2], 8)
-            elif curr_word_list[1] == "chooses":
-                continue
-            elif current_action.find("activates an ability of") != -1:
-                play.Casting_Player = curr_word_list[0]
+            elif "activates an ability of" in current_action:
+                play.Action = "Activated Ability"
+                play.parse_targets(current_action)
                 if cards_in_action:
                     play.Primary_Card = cards_in_action[0]
                 else:
                     card = current_action.split(
                         "activates an ability of ")[1].split(" (")[0]
                     play.Primary_Card = 'NA' if card in (p1,p2) else card
-                play.Action = "Activated Ability"
-                if "targeting" in current_action:
-                    play.parse_targets(current_action)
             elif curr_word_list[1] == "discards":
-                play.Casting_Player = curr_word_list[0]
                 play.Action = 'Discards'
                 play.Primary_Card = cards_in_action[0] if cards_in_action else 'NA'
             elif "is being attacked by" in current_action:
-                play.Casting_Player = active_player
+                play.Casting_Player = alter(active_player, original=True)
                 play.Action = "Attacks"
                 play.Attackers = len(CARD_PATTERN.findall(current_action.split("is being attacked by")[1]))
             elif "puts triggered ability from" in current_action:
-                play.Casting_Player = curr_word_list[0]
+                play.Action = "Triggers"
+                play.parse_targets(current_action)
                 if cards_in_action:
                     play.Primary_Card = cards_in_action[0]
                 else:
@@ -626,17 +638,6 @@ def play_data(game_actions: MatchActions) -> list[PlayData]:
                     # MODO Bug Encountered. Primary_Card = "NA"
                     if play.Primary_Card in (p1,p2):
                         play.Primary_Card = "NA"
-                play.Action = "Triggers"
-                if "targeting" in current_action:
-                    play.parse_targets(current_action)
-            play_num += 1
-            play.Active_Player = alter(active_player, original=True)
-            play.Nonactive_Player = alter(nonactive_player, original=True)
-            play.Casting_Player = alter(play.Casting_Player, original=True)
-            play.Play_Num = play_num
-            play.Game_Num = game_num
-            play.Turn_Num = turn_num
-            all_plays.append(play)
     return all_plays
 
 def get_all_data(
@@ -644,7 +645,7 @@ def get_all_data(
     ) ->tuple[
         MatchData, 
         list[list[Union[str, int]]], 
-        list[list[Union[str, int]]], 
+        list[PlayData], 
         dict[str, list[str]], 
         tuple[bool, Union[str, Literal[None]]]]:
     # Input:  String,String
