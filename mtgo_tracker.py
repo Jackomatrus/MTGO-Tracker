@@ -9,6 +9,7 @@ from tkcalendar import DateEntry
 from pathlib import Path
 import csv
 from MODO_DATA import ARCHETYPES
+from datatypes import MatchData, PlayData, GameData, MatchActions
 import modo
 import os
 import time
@@ -532,7 +533,8 @@ def startup():
     os.chdir(FILEPATH_ROOT)
 def save_settings():
     os.chdir(FILEPATH_ROOT / "save")
-    SETTINGS = [FILEPATH_ROOT,FILEPATH_EXPORT,FILEPATH_LOGS,FILEPATH_LOGS_COPY,FILEPATH_DRAFTS,FILEPATH_DRAFTS_COPY,HERO]
+    SETTINGS = [FILEPATH_ROOT,FILEPATH_EXPORT,FILEPATH_LOGS,
+                FILEPATH_LOGS_COPY,FILEPATH_DRAFTS,FILEPATH_DRAFTS_COPY,HERO]
     pickle.dump(SETTINGS,open("SETTINGS","wb"))
     pickle.dump(MAIN_WINDOW_SIZE,open("MAIN_WINDOW_SIZE","wb"))
     os.chdir(FILEPATH_ROOT)
@@ -848,19 +850,20 @@ def input_missing_data():
     n = 0
     count = 0
     total = len(ALL_DATA[0])
-    for i in ALL_DATA[0]:    # Iterate through matches.
+    for match in ALL_DATA[0]: # Iterate through matches.
+        match: MatchData
         n += 1
-        
         # Match record is missing some data.
-        if (i[p1_arch_index] == "NA") or (i[p1_sub_index] == "NA") or \
-            (i[p2_arch_index] == "NA") or (i[p2_sub_index] == "NA") or \
-            (i[p1_sub_index] == "Unknown") or (i[p2_sub_index] == "Unknown") or \
-            (i[mformat_index] == "NA") or (i[mtype_index] == "NA") or \
-            ((i[mformat_index] in INPUT_OPTIONS["Limited Formats"]) & (i[lformat_index] == "NA")): 
+        if ('NA' in (match.P1_Arch, match.P2_Arch, match.P1_Subarch, 
+                    match.P2_Subarch, match.Format, match.Match_Type)
+            or 'Unknown' in (match.P1_Subarch, match.P2_Subarch)
+            or (match.Format in INPUT_OPTIONS["Limited Formats"] 
+                and match.Limited_Format == 'NA')
+            ):
             count += 1
             df = pd.DataFrame(ALL_DATA[2],columns=HEADERS["Plays"])
-            df = df[(df.Match_ID == i[0])]
-            players = [i[HEADERS["Matches"].index("P1")],i[HEADERS["Matches"].index("P2")]]
+            df = df[(df.Match_ID == match[0])]
+            players = [match.P1,match.P2]
             cards1 =  df[(df.Casting_Player == players[0]) & (df.Action == "Land Drop")].Primary_Card.value_counts().keys().tolist()
             cards2 =  df[(df.Casting_Player == players[0]) & (df.Action == "Casts")].Primary_Card.value_counts().keys().tolist()
             cards3 =  df[(df.Casting_Player == players[1]) & (df.Action == "Land Drop")].Primary_Card.value_counts().keys().tolist()
@@ -869,19 +872,19 @@ def input_missing_data():
             cards2 = sorted(cards2,key=str.casefold)
             cards3 = sorted(cards3,key=str.casefold)
             cards4 = sorted(cards4,key=str.casefold)
-            revise_entry_window(players,cards1,cards2,cards3,cards4,(n,total),i)
+            revise_entry_window(players,cards1,cards2,cards3,cards4,(n,total),match)
             if missing_data == "Exit":
                 break
             elif missing_data == "Skip":
                 continue
             else:
-                i[p1_arch_index] = missing_data[0]
-                i[p1_sub_index] =  missing_data[1]
-                i[p2_arch_index] = missing_data[2]
-                i[p2_sub_index] =  missing_data[3]
-                i[mformat_index] = missing_data[4]
-                i[lformat_index] = missing_data[5]
-                i[mtype_index] =   missing_data[6]
+                match[p1_arch_index] = missing_data[0]
+                match[p1_sub_index] =  missing_data[1]
+                match[p2_arch_index] = missing_data[2]
+                match[p2_sub_index] =  missing_data[3]
+                match[mformat_index] = missing_data[4]
+                match[lformat_index] = missing_data[5]
+                match[mtype_index] =   missing_data[6]
 
     if count == 0:
         update_status_bar(status="No Matches with Missing Data.")
@@ -1058,7 +1061,7 @@ def rerun_decks_window():
     # Comment out if we want to add back ability to import sample decklists from .txt files.
     button2["state"] = tk.DISABLED
     rerun_decks_window.protocol("WM_DELETE_WINDOW", lambda : close_window())
-def revise_entry_window(players,cards1,cards2,card3,cards4,progress,mdata):
+def revise_entry_window(players,cards1,cards2,cards3,cards4,progress,mdata):
     def close_format_window(*argv):
         global missing_data
         global ask_to_save
@@ -1086,13 +1089,13 @@ def revise_entry_window(players,cards1,cards2,card3,cards4,progress,mdata):
         subwindow.destroy()
 
     height = 450
-    width =  650                
+    width =  650
     subwindow = tk.Toplevel(window)
     if progress == 0:
         subwindow.title("Revise Entry")
     else:
         subwindow.title("Input Missing Data - " + str(progress[0]) + "/" + str(progress[1]) + " Matches.")
-    subwindow.iconbitmap(subwindow,"icon.ico")        
+    subwindow.iconbitmap(subwindow,"icon.ico")
     subwindow.minsize(width,height)
     subwindow.resizable(False,False)
     subwindow.attributes("-topmost",True)
@@ -1103,23 +1106,10 @@ def revise_entry_window(players,cards1,cards2,card3,cards4,progress,mdata):
         (window.winfo_x()+(window.winfo_width()/2)-(width/2),
         window.winfo_y()+(window.winfo_height()/2)-(height/2)))
     message = "Date Played: " + mdata[HEADERS["Matches"].index("Date")]
-    str1 = str2 = str3 = str4 = ""
-    for index,i in enumerate(cards1):
-        if index > 0:
-            str1 += "\n"
-        str1 += i
-    for index,i in enumerate(cards2):
-        if index > 0:
-            str2 += "\n"
-        str2 += i
-    for index,i in enumerate(card3):
-        if index > 0:
-            str3 += "\n"
-        str3 += i
-    for index,i in enumerate(cards4):
-        if index > 0:
-            str4 += "\n"
-        str4 += i
+    str1 = '\n'.join(cards1)
+    str2 = '\n'.join(cards2)
+    str3 = '\n'.join(cards3)
+    str4 = '\n'.join(cards4)
     
     def update_arch(*argv):
         menu = match_type["menu"]
@@ -1168,7 +1158,7 @@ def revise_entry_window(players,cards1,cards2,card3,cards4,progress,mdata):
                     menu.add_command(label=i,command=lambda x=i: dformat.set(x))
             elif mformat.get() == "Sealed Deck":
                 for i in INPUT_OPTIONS["Sealed Formats"]:
-                    menu.add_command(label=i,command=lambda x=i: dformat.set(x))            
+                    menu.add_command(label=i,command=lambda x=i: dformat.set(x))
 
             p1_arch.set(arch_options[0])
             p2_arch.set(arch_options[0])
@@ -1303,7 +1293,7 @@ def revise_entry_window(players,cards1,cards2,card3,cards4,progress,mdata):
     p2_arch_menu.grid(row=1,column=0)
     p2_arch_menu.config(width=15)
     p2_sub.grid(row=1,column=1)
-  
+
     button_skip.grid(row=0,column=0,padx=10,pady=10)
     label_message.grid(row=0,column=1,padx=10,pady=10)
     button_exit.grid(row=0,column=2,padx=10,pady=10)
@@ -1340,7 +1330,7 @@ def revise_draft_window(picks,progress,mdata):
             ask_to_save = True
         subwindow.grab_release()
         subwindow.destroy()
-             
+
     height = 450
     width =  650                
     subwindow = tk.Toplevel(window)
@@ -1428,15 +1418,12 @@ def revise_draft_window(picks,progress,mdata):
     subwindow.wait_window()
 def tree_double(event):
     global filter_dict  
-    if tree1.focus() == "":
+    if not tree1.focus():
         return None
-    if (display == "Plays") or (display == "Picks"):
+    if display in ("Plays", "Picks"):
         return None
-    if tree1.identify_region(event.x,event.y) == "separator":
+    if tree1.identify_region(event.x,event.y) in ("separator", "heading"):
         return None
-    if tree1.identify_region(event.x,event.y) == "heading":
-        return None    
-        
     clear_filter(update_status=False,reload_display=False)
     if (display == "Matches"):
         add_filter_setting("Match_ID",tree1.item(tree1.focus(),"values")[0],"=")
@@ -1778,7 +1765,7 @@ def set_default_import():
     def close_import_window():
         import_window.grab_release()
         import_window.destroy()
-   
+
     mid_frame = tk.LabelFrame(import_window,text="Import Folder Paths")
     bot_frame = tk.Frame(import_window)
     mid_frame.grid(row=1,column=0,sticky="nsew")
@@ -2745,12 +2732,12 @@ def revise_record_multi():
 def activate_revise(event):
     if tree1.identify_region(event.x,event.y) == "heading":
         return
-    if data_loaded == False:
+    if not data_loaded:
         return
-    if (display == "Matches"):
+    if display == "Matches":
         revise_button["state"] = tk.NORMAL
         remove_button["state"] = tk.NORMAL
-    elif (display == "Drafts"):
+    elif display == "Drafts":
         # revise_button["state"] = tk.NORMAL
         remove_button["state"] = tk.NORMAL
 def revise_method_select():
@@ -3798,7 +3785,7 @@ def get_stats():
                                  df1_i,
                                  how="inner",
                                  left_on=["Match_ID","P1","P2"],
-                                 right_on=["Match_ID","P1","P2"])       
+                                 right_on=["Match_ID","P1","P2"])
         df2_merge   =   pd.merge(df0,
                                  df2,
                                  how="inner",
@@ -3815,6 +3802,8 @@ def get_stats():
         df2_hero      = df2_merge[(df2_merge.Casting_Player == hero)]
         
         formats_played = df2_hero.Format.value_counts().keys().tolist()
+        # the following line is a terrible fix for an issue with multiplayer
+        formats_played = [format for format in formats_played if df1_i_merge[(df1_i_merge.P1 == hero) & (df1_i_merge.Format == format)].shape[0]]
         formats =    []
         index_list = []
         for i in formats_played:
@@ -3825,28 +3814,27 @@ def get_stats():
             index_list.append("Per Game")
         tree1_data = []
         for i in formats_played:
-            try:
-                hero_n_format = df1_i_merge[(df1_i_merge.P1 == hero) & (df1_i_merge.Format == i)].shape[0]
-                play_count =    df2_hero[(df2_hero.Format == i) & (df2_hero.Action == "Land Drop")].shape[0]
-                cast_count =    df2_hero[(df2_hero.Format == i) & (df2_hero.Action == "Casts")].shape[0]
-                act_count =     df2_hero[(df2_hero.Format == i) & (df2_hero.Action == "Activated Ability")].shape[0]
-                trig_count =    df2_hero[(df2_hero.Format == i) & (df2_hero.Action == "Triggers")].shape[0]
-                attack_count =  df2_hero[(df2_hero.Format == i) & (df2_hero.Action == "Attacks")].Attackers.sum()
-                draw_count =    df2_hero[(df2_hero.Format == i) & (df2_hero.Action == "Draws")].Cards_Drawn.sum()
-                tree1_data.append([play_count,
-                                cast_count,
-                                act_count,
-                                trig_count,
-                                attack_count,
-                                draw_count])
-                tree1_data.append([round(play_count/hero_n_format,1),
-                                round(cast_count/hero_n_format,1),
-                                round(act_count/hero_n_format,1),
-                                round(trig_count/hero_n_format,1),
-                                round(attack_count/hero_n_format,1),
-                                round(draw_count/hero_n_format,1)])
-            except ZeroDivisionError:
-                pass
+
+            hero_n_format = df1_i_merge[(df1_i_merge.P1 == hero) & (df1_i_merge.Format == i)].shape[0]
+            play_count =    df2_hero[(df2_hero.Format == i) & (df2_hero.Action == "Land Drop")].shape[0]
+            cast_count =    df2_hero[(df2_hero.Format == i) & (df2_hero.Action == "Casts")].shape[0]
+            act_count =     df2_hero[(df2_hero.Format == i) & (df2_hero.Action == "Activated Ability")].shape[0]
+            trig_count =    df2_hero[(df2_hero.Format == i) & (df2_hero.Action == "Triggers")].shape[0]
+            attack_count =  df2_hero[(df2_hero.Format == i) & (df2_hero.Action == "Attacks")].Attackers.sum()
+            draw_count =    df2_hero[(df2_hero.Format == i) & (df2_hero.Action == "Draws")].Cards_Drawn.sum()
+            tree1_data.append([play_count,
+                            cast_count,
+                            act_count,
+                            trig_count,
+                            attack_count,
+                            draw_count])
+            tree1_data.append([round(play_count/hero_n_format,1),
+                            round(cast_count/hero_n_format,1),
+                            round(act_count/hero_n_format,1),
+                            round(trig_count/hero_n_format,1),
+                            round(attack_count/hero_n_format,1),
+                            round(draw_count/hero_n_format,1)])
+
 
         df_tree2 = df2_hero
         turn_list = df_tree2.Turn_Num.value_counts().keys().tolist()
@@ -4965,7 +4953,7 @@ def remove_record(ignore):
         counts = [precounts[0]-len(DRAFTS_TABLE),precounts[1]-len(PICKS_TABLE)]
 
     # Remove GameLog filename from our list of previously parsed files.
-    if ignore == False:
+    if not ignore:
         if display == "Matches":
             for i in sel_matchid:
                 for j in PARSED_FILE_DICT:
@@ -4977,7 +4965,7 @@ def remove_record(ignore):
                 for j in PARSED_DRAFT_DICT:
                     if PARSED_DRAFT_DICT[j] in sel_matchid:
                         PARSED_DRAFT_DICT.pop(j)
-                        break          
+                        break
 
     ask_to_save = True
     set_display(display,update_status=False,start_index=0,reset=True)
@@ -5024,12 +5012,9 @@ def remove_select():
     bot_frame.grid_rowconfigure(0,weight=1)
     bot_frame.grid_rowconfigure(1,weight=1)
 
-    if len(tree1.selection()) == 1:
-        t1 = "This will delete the selected Match and associated Games and Plays from your Database."
-        t2 = "Would you like to ignore this Match in future imports?"
-    else:
-        t1 = "This will delete the selected Matches and associated Games and Plays from your Database."
-        t2 = "Would you like to ignore these Matches in future imports?"
+    multiples = len(tree1.selection()) > 1
+    t1 = f"This will delete the selected Match{'es' if multiples else ''} and associated Games and Plays from your Database."
+    t2 = f"Would you like to ignore {'these Matches' if multiples else 'this Match'} in future imports?"
 
     label1 = tk.Label(mid_frame,text=t1,wraplength=width,anchor="s",justify="left")
     label2 = tk.Label(mid_frame,text=t2,wraplength=width,anchor="n")
@@ -5353,7 +5338,7 @@ window.title("MTGO-Tracker")
 window.iconbitmap(window,"icon.ico")
 
 load_window_size_setting()
-window.geometry(str(MAIN_WINDOW_SIZE[1]) + "x" + str(MAIN_WINDOW_SIZE[2]))
+window.geometry(f"{MAIN_WINDOW_SIZE[1]}x{MAIN_WINDOW_SIZE[2]}")
 window.resizable(False,False)
 
 window.rowconfigure(0,weight=1)
@@ -5372,34 +5357,37 @@ text_frame.grid_rowconfigure(0,weight=1)
 text_frame.grid_rowconfigure(1,weight=0)
 bottom_frame.grid_columnconfigure(0,weight=1)
 
-match_button = tk.Button(left_frame,text="Matches",state=tk.DISABLED,\
+# START buttons on the left side of the gui 
+match_button = tk.Button(left_frame,text="Matches",state=tk.DISABLED,
     command=lambda : set_display("Matches",update_status=True,start_index=0,reset=True))
-game_button = tk.Button(left_frame,text="Games",state=tk.DISABLED,\
+game_button = tk.Button(left_frame,text="Games",state=tk.DISABLED,
     command=lambda : set_display("Games",update_status=True,start_index=0,reset=True))
-play_button = tk.Button(left_frame,text="Plays",state=tk.DISABLED,\
+play_button = tk.Button(left_frame,text="Plays",state=tk.DISABLED,
     command=lambda : set_display("Plays",update_status=True,start_index=0,reset=True))
-draft_button = tk.Button(left_frame,text="Drafts",state=tk.DISABLED,\
+draft_button = tk.Button(left_frame,text="Drafts",state=tk.DISABLED,
     command=lambda : set_display("Drafts",update_status=True,start_index=0,reset=True))
-pick_button = tk.Button(left_frame,text="Draft Picks",state=tk.DISABLED,\
+pick_button = tk.Button(left_frame,text="Draft Picks",state=tk.DISABLED,
     command=lambda : set_display("Picks",update_status=True,start_index=0,reset=True))
-stats_button = tk.Button(left_frame,text="Statistics",state=tk.DISABLED,\
+stats_button = tk.Button(left_frame,text="Statistics",state=tk.DISABLED,
     command=lambda : get_stats())
-filter_button = tk.Button(left_frame,text="Filter",state=tk.DISABLED,\
+filter_button = tk.Button(left_frame,text="Filter",state=tk.DISABLED,
     command=lambda : set_filter())
 clear_button = tk.Button(left_frame,text="Clear Filter",state=tk.DISABLED,\
     command=lambda : clear_filter(update_status=True,reload_display=True))
-revise_button = tk.Button(left_frame,text="Revise Record(s)",\
+revise_button = tk.Button(left_frame,text="Revise Record(s)",
     state=tk.DISABLED,command=lambda : revise_method_select())
-remove_button = tk.Button(left_frame,text="Remove Record(s)",\
+remove_button = tk.Button(left_frame,text="Remove Record(s)",
     state=tk.DISABLED,command=lambda : remove_select())
-next_button = tk.Button(left_frame,text="Next",state=tk.DISABLED,\
+next_button = tk.Button(left_frame,text="Next",state=tk.DISABLED,
     command=lambda : next_page())
-back_button = tk.Button(left_frame,text="Back",state=tk.DISABLED,\
+back_button = tk.Button(left_frame,text="Back",state=tk.DISABLED,
     command=lambda : back())
+# END buttons on the left side of the gui
 
 status_label = tk.Label(bottom_frame,text="")
 status_label.grid(row=0,column=0)
 
+# START menu bar entries
 menu_bar = tk.Menu(window)
 
 file_menu = tk.Menu(menu_bar,tearoff=False)
@@ -5423,12 +5411,12 @@ export_csv.add_command(label="Game History",command=lambda : export2(games=True,
 export_csv.add_command(label="Play History",command=lambda : export2(plays=True,_csv=True))
 export_csv.add_command(label="Draft History",command=lambda : export2(drafts=True,_csv=True))
 export_csv.add_command(label="Draft Pick History",command=lambda : export2(picks=True,_csv=True))
-export_csv.add_command(label="All Data (5 Files)",\
+export_csv.add_command(label="All Data (5 Files)",
     command=lambda : export2(matches=True,games=True,plays=True,drafts=True,picks=True,_csv=True))
 export_csv.add_separator()
 export_csv.add_command(label="Match History (Inverse Join)",command=lambda : export2(matches=True,_csv=True,inverted=True))
 export_csv.add_command(label="Game History (Inverse Join)",command=lambda : export2(games=True,_csv=True,inverted=True))
-export_csv.add_command(label="All Data (Inverse Join, 5 Files)",\
+export_csv.add_command(label="All Data (Inverse Join, 5 Files)",
     command=lambda : export2(matches=True,games=True,plays=True,drafts=True,picks=True,_csv=True,inverted=True))
 export_csv.add_separator()
 export_csv.add_command(label="Currently Displayed Data (with Filters)",command=lambda : export2(current=True,_csv=True,filtered=True))
@@ -5439,12 +5427,12 @@ export_excel.add_command(label="Game History",command=lambda : export2(games=Tru
 export_excel.add_command(label="Play History",command=lambda : export2(plays=True,_excel=True))
 export_excel.add_command(label="Draft History",command=lambda : export2(drafts=True,_excel=True))
 export_excel.add_command(label="Draft Pick History",command=lambda : export2(picks=True,_excel=True))
-export_excel.add_command(label="All Data (5 Files)",\
+export_excel.add_command(label="All Data (5 Files)",
     command=lambda : export2(matches=True,games=True,plays=True,drafts=True,picks=True,_excel=True))
 export_excel.add_separator()
 export_excel.add_command(label="Match History (Inverse Join)",command=lambda : export2(matches=True,_excel=True,inverted=True))
 export_excel.add_command(label="Game History (Inverse Join)",command=lambda : export2(games=True,_excel=True,inverted=True))
-export_excel.add_command(label="All Data (Inverse Join, 5 Files)",\
+export_excel.add_command(label="All Data (Inverse Join, 5 Files)",
     command=lambda : export2(matches=True,games=True,plays=True,drafts=True,picks=True,_excel=True,inverted=True))
 export_excel.add_separator()
 export_excel.add_command(label="Currently Displayed Table (with Filters)",command=lambda : export2(current=True,_excel=True,filtered=True))
@@ -5468,6 +5456,7 @@ data_menu.add_command(label="Set Default Import Folders",command=lambda : set_de
 data_menu.add_separator()
 data_menu.add_command(label="Clear Loaded Data",command=lambda : clear_window(),state=tk.DISABLED)
 data_menu.add_command(label="Delete Saved Session",command=lambda : delete_session())
+# END menu bar entries
 
 if test_mode:
     test_menu = tk.Menu(menu_bar,tearoff=False)
