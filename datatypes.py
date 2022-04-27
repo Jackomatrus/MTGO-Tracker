@@ -55,8 +55,8 @@ class GameData(list):
         # fill up so all properties can be accessed
         self.extend([''] * (12 - len(self)))
 
-for category in GAME_HEADER:
-    exec(f'GameData.{category} = property_factory(GAME_HEADER.index("{category}"))')
+    for category in GAME_HEADER:
+        exec(f'{category} = property_factory(GAME_HEADER.index("{category}"))')
 
 class MatchData(list):
     Match_ID: str
@@ -82,8 +82,9 @@ class MatchData(list):
         super(MatchData, self).__init__(*args)
         # fill up so all properties can be accessed
         self.extend([''] * (18 - len(self)))
-for category in MATCHES_HEADER:
-    exec(f'MatchData.{category} = property_factory(MATCHES_HEADER.index("{category}"))')
+    
+    for category in MATCHES_HEADER:
+        exec(f'{category} = property_factory(MATCHES_HEADER.index("{category}"))')
 
 class PlayData(list):
     Match_ID: str
@@ -133,6 +134,17 @@ class PlayData(list):
             self.Nonactive_Player if self.Casting_Player == self.Active_Player 
             else self.Active_Player)
         self.Opp_Target = int(other_player in without_brackets)
+    for category in PLAYS_HEADER:
+        exec(f'{category} = property_factory(PLAYS_HEADER.index("{category}"))')
 
-for category in PLAYS_HEADER:
-    exec(f'PlayData.{category} = property_factory(PLAYS_HEADER.index("{category}"))')
+class AllData(list):
+    def __init__(self, *args):
+        if len(args) == 0:
+            self = [[],[],[],{}]
+            return
+        else:
+            super(AllData, self).__init__(*args)
+    matches = property_factory(0)
+    games = property_factory(1)
+    plays = property_factory(2)
+    raw_game_data_dict = property_factory(3)
