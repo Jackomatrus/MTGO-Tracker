@@ -325,8 +325,8 @@ def all_actions(game_log: str) -> MatchActions:
         game_log = game_log.replace(player,alter(player))
     split_log = game_log.split("@P")
     game_log_list = [
+        # skip first entry, final entry doesn't have artifacts
         remove_text_artifacts(game_action) for game_action in split_log[1:-1]]
-    # skip first entry, final entry doesn't have artifacts
     game_log_list.append(split_log[-1])
     for game_action in game_log_list:
         if not game_action:
@@ -449,43 +449,42 @@ def get_winner(curr_game_list: list[str], p1: str, p2: str
 
 
 def game_data(
-    match_actions: list[str]
+    match_actions: MatchActions
     ) -> tuple[
-        list[list[Union[str, int]]], 
+        list[GameData], 
         dict[str, list[str]]
         ]:
     """Parses a list of actions in an entire match.
 
     Args:
-        match_actions (list[str]): A list of actions provided from all_actions
+        match_actions (MatchActions): A list of actions provided from all_actions
             First entry in this list is the match_ID
 
     Returns:
-        tuple[list[list[str, int]], dict[str, list[str]] ]: 
+        tuple[list[GameData], dict[str, list[str]] ]: 
             A list of game lists and a dict of games without a winner.
             Each game list is structured 
             [Match_ID, P1, P2, game_num, pd_selector, pd_choice, on_play, 
             on_draw, P1_mulls, P2_mulls, num_turns, winner]
             Dict is structured {'MatchID-GameNum': list[game actions]}
     """
-
-    # needed variables
-    ALL_PARSED_GAMES = []
-    ALL_GAMES_GA = {}
-    GAME_NUM = 0
-    # 'useless' placeholders to prevent crash if missing in game log
-    PD_SELECTOR = PD_CHOICE = ON_PLAY = ON_DRAW = ""
-    P1_MULLS = P2_MULLS = TURNS = 0
-
+    all_parsed_games = []
+    all_games_ga = {}
+    game_num = 0
     try:
-        P1, P2 = players(match_actions)[0:2]
+        p1, p2 = match_actions.players[0:2]
     except ValueError:
         return "Players not Found."
+    game = GameData()
+    game.P1 = alter(p1,original=True)
+    game.P2 = alter(p2,original=True)
+    game.Match_ID = match_actions.match_id
+
     curr_game_list = []
-    initial_player_count = join_countdown = len(players(match_actions))
-    MATCH_ID = match_actions[0]
+    initial_player_count = join_countdown = len(match_actions.players)
 
     for action in match_actions:
+        action: str
         current_action_list = action.split()
         # all players joining indicate a break between games
         if "joined the game" in action:
@@ -495,58 +494,39 @@ def game_data(
                 # New Game, reset countdown
                 join_countdown = initial_player_count
                 join_countdown -= 1
-                GAME_WINNER = get_winner(curr_game_list, P1, P2)
-                if GAME_WINNER == "NA":
-                    ALL_GAMES_GA[f"{MATCH_ID}-{GAME_NUM}"] = curr_game_list
-                ALL_PARSED_GAMES.append(GameData([
-                    MATCH_ID,
-                    alter(P1,original=True),
-                    alter(P2,original=True),
-                    GAME_NUM,
-                    PD_SELECTOR,
-                    PD_CHOICE,
-                    ON_PLAY,
-                    ON_DRAW,
-                    P1_MULLS,
-                    P2_MULLS,
-                    TURNS,
-                    GAME_WINNER]))
+                game.Game_Winner = get_winner(curr_game_list, p1, p2)
+                if game.Game_Winner == "NA":
+                    all_games_ga[f"{game.Match_ID}-{game_num}"] = curr_game_list
+                all_parsed_games.append(game)
+                game = GameData()
+                game.P1 = alter(p1,original=True)
+                game.P2 = alter(p2,original=True)
+                game.Match_ID = match_actions.match_id
                 curr_game_list = []
         elif "chooses to" in action and "play first" in action:
-            GAME_NUM += 1
-            PD_SELECTOR = "P1" if current_action_list[0] == P1 else 'P2'
-            PD_CHOICE = "Play" if current_action_list[3] == "play" else 'Draw'
-            if PD_CHOICE == "Play":
-                ON_PLAY = PD_SELECTOR
-                ON_DRAW = "P2" if PD_SELECTOR == 'P1' else 'P1'
+            game_num += 1
+            game.Game_Num = game_num
+            game.PD_Selector = "P1" if current_action_list[0] == p1 else 'P2'
+            game.PD_Choice = "Play" if current_action_list[3] == "play" else 'Draw'
+            if game.PD_Choice == "Play":
+                game.On_Play = game.PD_Selector
+                game.On_Draw = "P2" if game.PD_Selector == 'P1' else 'P1'
             else:
-                ON_PLAY = "P2" if PD_SELECTOR == 'P1' else 'P1'
-                ON_DRAW = PD_SELECTOR
+                game.On_Play = "P2" if game.PD_Selector == 'P1' else 'P1'
+                game.On_Draw = game.PD_Selector
         elif "begins the game with" in action and "cards in hand" in action:
-            if P1 == current_action_list[0]:
-                P1_MULLS = MULL_DICT[action.split(" begins the game with ")[1].split()[0]]
-            elif P2 == current_action_list[0]:
-                P2_MULLS = MULL_DICT[action.split(" begins the game with ")[1].split()[0]]
+            if p1 == current_action_list[0]:
+                game.P1_Mulls = MULL_DICT[action.split(" begins the game with ")[1].split()[0]]
+            elif p2 == current_action_list[0]:
+                game.P2_Mulls = MULL_DICT[action.split(" begins the game with ")[1].split()[0]]
         elif "Turn " in action and len(current_action_list) == 3:
-            TURNS = int(current_action_list[1].split(":")[0])
+            game.Turns = int(current_action_list[1].split(":")[0])
         curr_game_list.append(action)
-    GAME_WINNER = get_winner(curr_game_list,P1,P2)
-    if GAME_WINNER == "NA":
-        ALL_GAMES_GA[f"{MATCH_ID}-{GAME_NUM}"] = curr_game_list
-    ALL_PARSED_GAMES.append(GameData([
-        MATCH_ID,
-        alter(P1,original=True),
-        alter(P2,original=True),
-        GAME_NUM,
-        PD_SELECTOR,
-        PD_CHOICE,
-        ON_PLAY,
-        ON_DRAW,
-        P1_MULLS,
-        P2_MULLS,
-        TURNS,
-        GAME_WINNER]))
-    return (ALL_PARSED_GAMES, ALL_GAMES_GA)
+    game.Game_Winner = get_winner(curr_game_list,p1,p2)
+    if game.Game_Winner == "NA":
+        all_games_ga[f"{game.Match_ID}-{game_num}"] = curr_game_list
+    all_parsed_games.append(game)
+    return (all_parsed_games, all_games_ga)
 
 def is_play(play: str) -> bool:
     action_keywords = ["plays","casts","draws","chooses","discards"]
@@ -562,28 +542,7 @@ def is_play(play: str) -> bool:
             return True
     return False
 
-def parse_targets(
-    action: str, casting_player: str, other_player: str
-    ) -> tuple[str, str, str, Literal[0,1], Literal[0,1]]:
-
-    if 'targeting' not in action:
-        raise ValueError(f'expected action with targets, got {action}')
-    target_string = action.split("targeting")[1]
-    target_1 = target_2 = target_3 = "NA"
-    targets = CARD_PATTERN.findall(target_string)
-    try:
-        target_1 = targets[0]
-        target_2 = targets[1]
-        target_3 = targets[2]
-    except IndexError:
-        pass
-    # only check for player name as targets outside of brackets
-    without_brackets = re.sub(r'\[.*?\]', '', target_string)
-    self_target = int(casting_player in without_brackets)
-    opp_target = int(other_player in without_brackets)
-    return (target_1, target_2, target_3, self_target, opp_target)
-
-def play_data(game_actions: MatchActions) -> list[list[Union[str, int]]]:
+def play_data(game_actions: MatchActions) -> list[PlayData]:
     """Parses a list of actions into a list of machine readable plays.
 
     Args:
@@ -606,6 +565,7 @@ def play_data(game_actions: MatchActions) -> list[list[Union[str, int]]]:
     active_player = nonactive_player = ''
 
     for current_action in game_actions:
+        current_action: str
         play = PlayData()
         play.Match_ID = game_actions.match_id
         play.Casting_Player = play.Action = ""
@@ -643,11 +603,9 @@ def play_data(game_actions: MatchActions) -> list[list[Union[str, int]]]:
                 if cards_in_action:
                     play.Primary_Card = cards_in_action[0]
                 else:
-                    play.Primary_Card = current_action.split(
+                    card = current_action.split(
                         "activates an ability of ")[1].split(" (")[0]
-                    # MODO Bug Encountered. Primary_Card = "NA"
-                    if play.Primary_Card in (p1,p2):
-                        play.Primary_Card = "NA"
+                    play.Primary_Card = 'NA' if card in (p1,p2) else card
                 play.Action = "Activated Ability"
                 if "targeting" in current_action:
                     play.parse_targets(current_action)
@@ -684,7 +642,7 @@ def play_data(game_actions: MatchActions) -> list[list[Union[str, int]]]:
 def get_all_data(
     game_log: str, file_last_modified: struct_time
     ) ->tuple[
-        list[Union[str, int]], 
+        MatchData, 
         list[list[Union[str, int]]], 
         list[list[Union[str, int]]], 
         dict[str, list[str]], 
