@@ -9,7 +9,7 @@ from tkcalendar import DateEntry
 from pathlib import Path
 import csv
 from MODO_DATA import ARCHETYPES
-from datatypes import MatchData, PlayData, GameData, MatchActions
+from datatypes import AllData, MatchData, PlayData, GameData, MatchActions
 import modo
 import os
 import time
@@ -55,7 +55,6 @@ display =           ""
 prev_display =      ""
 uaw =               "NA"
 field =             ""
-new_import =        False
 data_loaded =       False
 filter_changed =    False
 ask_to_save =       False
@@ -214,7 +213,6 @@ def clear_loaded():
     global filter_changed
     global prev_display
     global uaw
-    global new_import
     global ask_to_save
 
     ALL_DATA =          [[],[],[],{}]
@@ -230,7 +228,6 @@ def clear_loaded():
     uaw =               "NA"
     data_loaded =       False
     filter_changed =    False
-    new_import =        False
     ask_to_save =       False
 
     match_button["state"] = tk.DISABLED
@@ -258,7 +255,6 @@ def clear_loaded():
 
     # Clear existing data in tree.
     tree1.delete(*tree1.get_children())
-    tree1["show"] = "tree"
 def clear_window():
     height = 100
     width =  300
@@ -444,46 +440,20 @@ def startup():
     global data_loaded
     global ask_to_save
 
-    if os.path.isfile("INPUT_OPTIONS.txt"):
-        in_header = False
-        in_instr = True
-        x = ""
-        y = []
-        with io.open("INPUT_OPTIONS.txt","r",encoding="ansi") as file:
-            initial = file.read().split("\n")
-            for i in initial:
-                if i == "-----------------------------":
-                    if in_instr:
-                        in_instr = False
-                    in_header = not in_header
-                    if in_header == False:
-                        x = last.split(":")[0].split("# ")[1]
-                    elif x != "":
-                        INPUT_OPTIONS[x] = y
-                        y = []                        
-                elif (in_header == False) and (i != "") and (in_instr == False):
-                    y.append(i)
-                last = i
-    else:
-        INPUT_OPTIONS["Constructed Match Types"] = CONSTRUCTED_PLAY_TYPES
-        INPUT_OPTIONS["Booster Draft Match Types"] = DRAFT_PLAY_TYPES
-        INPUT_OPTIONS["Sealed Match Types"] = SEALED_PLAY_TYPES
-        INPUT_OPTIONS["Archetypes"] = ARCHETYPES
-        INPUT_OPTIONS["Constructed Formats"] = CONSTRUCTED_FORMATS
-        INPUT_OPTIONS["Limited Formats"] = LIMITED_FORMATS
-        INPUT_OPTIONS["Cube Formats"] = CUBE_FORMATS
-        INPUT_OPTIONS["Booster Draft Formats"] = DRAFT_FORMATS
-        INPUT_OPTIONS["Sealed Formats"] = SEALED_FORMATS
+    INPUT_OPTIONS["Constructed Match Types"] = CONSTRUCTED_PLAY_TYPES
+    INPUT_OPTIONS["Booster Draft Match Types"] = DRAFT_PLAY_TYPES
+    INPUT_OPTIONS["Sealed Match Types"] = SEALED_PLAY_TYPES
+    INPUT_OPTIONS["Archetypes"] = ARCHETYPES
+    INPUT_OPTIONS["Constructed Formats"] = CONSTRUCTED_FORMATS
+    INPUT_OPTIONS["Limited Formats"] = LIMITED_FORMATS
+    INPUT_OPTIONS["Cube Formats"] = CUBE_FORMATS
+    INPUT_OPTIONS["Booster Draft Formats"] = DRAFT_FORMATS
+    INPUT_OPTIONS["Sealed Formats"] = SEALED_FORMATS
     
     FILEPATH_ROOT = Path(os.getcwd())
-    if os.path.isdir("save") == False:
-        os.mkdir(FILEPATH_ROOT / "save")
-    if os.path.isdir("export") == False:
-        os.mkdir(FILEPATH_ROOT / "export") 
-    if os.path.isdir("gamelogs") == False:
-        os.mkdir(FILEPATH_ROOT / "gamelogs")
-    if os.path.isdir("draftlogs") == False:
-        os.mkdir(FILEPATH_ROOT / "draftlogs")
+    for directory in ['save', 'export', 'gamelogs', 'draftlogs']:
+        if not os.path.isdir(directory):
+            os.mkdir(FILEPATH_ROOT / directory)
     FILEPATH_EXPORT = FILEPATH_ROOT / "export"
     FILEPATH_LOGS_COPY = FILEPATH_ROOT / "gamelogs"
     FILEPATH_DRAFTS_COPY = FILEPATH_ROOT / "draftlogs"
@@ -502,7 +472,7 @@ def startup():
     if os.path.isfile("ALL_DECKS"):
         ALL_DECKS = pickle.load(open("ALL_DECKS","rb"))
 
-    if (os.path.isfile("ALL_DATA") == False) & (os.path.isfile("DRAFTS_TABLE") == False):
+    if (not os.path.isfile("ALL_DATA")) & (not os.path.isfile("DRAFTS_TABLE")):
         update_status_bar(status="No session data to load. Import your MTGO GameLog files to get started.")
         os.chdir(FILEPATH_ROOT)
         return
@@ -600,14 +570,13 @@ def get_all_data(fp_logs,fp_drafts,copy):
     global PARSED_FILE_DICT
     global PARSED_DRAFT_DICT
     global data_loaded
-    global new_import
     global ask_to_save
 
     match_count = 0
     draft_count = 0
     skip_dict = {}
     if (fp_logs != "No Default GameLogs Folder"):
-        new_data = [[],[],[],{}]
+        new_data = AllData()
         os.chdir(fp_logs)
         for (root,dirs,files) in os.walk(fp_logs):
             for i in files:
@@ -689,7 +658,6 @@ def get_all_data(fp_logs,fp_drafts,copy):
 
     if (match_count > 0) or (draft_count > 0):
         ask_to_save = True
-    new_import = True
 
     if (len(ALL_DATA[0]) != 0) or (len(DRAFTS_TABLE) != 0):
         filter_button["state"] = tk.NORMAL
@@ -697,29 +665,24 @@ def get_all_data(fp_logs,fp_drafts,copy):
         data_loaded = True
     os.chdir(FILEPATH_ROOT)
 def print_data(data,headers,update_status,start_index,apply_filter):
-    global new_import
     global curr_data
 
     small_headers = ["P1_Roll","P2_Roll","P1_Wins","P2_Wins","Game_Num","Play_Num","Turn_Num","Pack_Num","Pick_Num","Pick_Ovr"]
     med_headers = ["Avail_1","Avail_2","Avail_3","Avail_4","Avail_5","Avail_6","Avail_7","Avail_8","Avail_9","Avail_10","Avail_11","Avail_12","Avail_13","Avail_14"]
     large_headers = ["Card"]
+    header_widths = {header: 75 for header in small_headers
+    } | {header: 80 for header in med_headers
+    } | {header: 120 for header in large_headers}
 
     # Clear existing data in tree
     tree1.delete(*tree1.get_children())
 
-    tree1["column"] = headers
-    tree1["show"] = "headings"
+    tree1["columns"] = headers
 
     # Insert column headers into tree
-    for i in tree1["column"]:
-        if i in small_headers:
-            tree1.column(i,anchor="center",stretch=False,width=75)
-        elif i in med_headers:
-            tree1.column(i,anchor="center",stretch=False,width=80)
-        elif i in large_headers:
-            tree1.column(i,anchor="center",stretch=False,width=120)
-        else:
-            tree1.column(i,anchor="center",stretch=False,width=100)
+    for i in tree1["columns"]:
+        width = header_widths.get(i,100)
+        tree1.column(i,anchor="center",stretch=False,width=width)
         tree1.heading(i,text=i,command=lambda _col=i: sort_column2(_col,False,tree1))
     tree1.column(0,anchor="w")
     
@@ -740,14 +703,12 @@ def print_data(data,headers,update_status,start_index,apply_filter):
         df = pd.DataFrame(PICKS_TABLE,columns=headers)
     else:
         df = pd.DataFrame(data,columns=headers)
-    total = df.shape[0]
     curr_data = df
 
     if apply_filter:
         # Apply existing filters.
         filtered_list = []
         for key in filter_dict:
-            print(key)
             if key not in headers:
                 continue
             for i in filter_dict[key]:
@@ -789,7 +750,6 @@ def print_data(data,headers,update_status,start_index,apply_filter):
         curr_data = df
 
     df_rows = df.to_numpy().tolist()
-
     end_index = min(start_index + ln_per_page, len(df_rows))
     next_button["state"] = tk.DISABLED if end_index == len(df_rows) else tk.NORMAL
     back_button["state"] = tk.DISABLED if start_index == 0 else tk.NORMAL
@@ -797,9 +757,7 @@ def print_data(data,headers,update_status,start_index,apply_filter):
     for i in range(start_index,end_index):
         tree1.insert("","end",values=df_rows[i])
 
-    if new_import == True:
-        new_import = False
-    elif update_status == True:
+    if update_status == True:
         update_status_bar(status=f"Displaying: {str(start_index + 1)}-{str(end_index)} of {str(len(df_rows))} total records.")
 def get_lists():
     global ALL_DECKS
@@ -3028,8 +2986,7 @@ def get_stats():
     stats_window.focus_force()
 
     stats_window.geometry("+%d+%d" %
-        (window.winfo_x(),
-         window.winfo_y()))
+        (window.winfo_x(),window.winfo_y()))
 
     top_frame = tk.Frame(stats_window)
     mid_frame = tk.Frame(stats_window)
@@ -5324,7 +5281,6 @@ def debug():
         txt.write(f"    prev_display: {prev_display}\n")
         txt.write(f"    uaw: {uaw}\n")
         txt.write(f"    field: {field}\n")
-        txt.write(f"    new_import: {new_import}\n")
         txt.write(f"    data_loaded: {data_loaded}\n")
         txt.write(f"    filter_changed: {filter_changed}\n")
         txt.write(f"    ask_to_save: {ask_to_save}\n")
@@ -5479,7 +5435,7 @@ remove_button.grid(row=10,column=0,sticky="ew",padx=5,pady=(0,5))
 next_button.grid(row=11,column=0,sticky="ew",padx=5,pady=(20,5))
 back_button.grid(row=12,column=0,sticky="ew",padx=5,pady=(0,5))
 
-tree1 = ttk.Treeview(text_frame,show="tree")
+tree1 = ttk.Treeview(text_frame,show="headings")
 tree1.grid(row=0,column=0,sticky="nsew")
 tree1.bind("<Double-1>",tree_double)
 tree1.bind("<ButtonRelease-1>",activate_revise)
