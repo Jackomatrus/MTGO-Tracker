@@ -29,7 +29,14 @@ class MatchActions(list):
         players_list.sort(key=len, reverse=True)
         return players_list
 
-def property_factory(index):
+def property_factory(index: int) -> property:
+    """Creates a property with getter and setter that references a list item.
+
+    Args:
+        index (int): The index of the list item that should be referenced.
+    Returns
+        property: A property that can be assigned to an object.
+    """
     def getter(self):
         return self[index]
     def setter(self, value):
@@ -146,4 +153,4 @@ class AllData(list):
     matches = property_factory(0)
     games = property_factory(1)
     plays = property_factory(2)
-    raw_game_data_dict = property_factory(3)
+    raw_game_data = property_factory(3)
