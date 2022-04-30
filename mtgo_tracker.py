@@ -1,4 +1,5 @@
 import tkinter as tk
+from typing import Union
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -49,7 +50,6 @@ INPUT_OPTIONS =          {}
 MAIN_WINDOW_SIZE =  ("small",1000,490)
 
 test_mode =         False
-resize =            False
 filter_dict =       {}
 display =           ""
 prev_display =      ""
@@ -69,7 +69,6 @@ def save(exit: bool) -> None:
 
     save_settings()
     os.chdir(FILEPATH_ROOT / "save")
-
     pickle.dump(ALL_DATA,open("ALL_DATA","wb"))
     pickle.dump(TIMEOUT,open("TIMEOUT","wb"))
     pickle.dump(DRAFTS_TABLE,open("DRAFTS_TABLE","wb"))
@@ -81,7 +80,8 @@ def save(exit: bool) -> None:
 
     if exit:
         close()
-def save_window(exit):
+
+def save_window(exit: bool) -> None:
     height = 100
     width =  300
     save_window = tk.Toplevel(window)
@@ -518,43 +518,24 @@ def set_display(d,update_status,start_index,reset):
 
     if display != d:
         prev_display = display
-        display = d
+    display = d
     
     if reset:
         display_index = 0
 
     text_frame.config(text=display)
     
-    if len(ALL_DATA[0]) > 0:
-        match_button["state"] = tk.NORMAL
-        game_button["state"] = tk.NORMAL
-        play_button["state"] = tk.NORMAL
-    else:
-        match_button["state"] = tk.DISABLED
-        game_button["state"] = tk.DISABLED
-        play_button["state"] = tk.DISABLED
-    if len(DRAFTS_TABLE) > 0:
-        draft_button["state"] = tk.NORMAL
-        pick_button["state"] = tk.NORMAL
-    else:
-        draft_button["state"] = tk.DISABLED
-        pick_button["state"] = tk.DISABLED
+    button_state = tk.NORMAL if len(ALL_DATA[0]) > 0 else tk.DISABLED
+    match_button["state"] = game_button["state"] = play_button["state"] = button_state
+    button_state = tk.NORMAL if len(DRAFTS_TABLE) > 0 else tk.DISABLED
+    draft_button["state"] = pick_button["state"] = button_state
 
     if d == "Matches":
-        if resize:
-            if MAIN_WINDOW_SIZE[0] == "large":
-                window.geometry("1740x" + str(MAIN_WINDOW_SIZE[2]))
-        print_data(ALL_DATA[0],HEADERS[display],update_status,start_index,apply_filter=True)
+        print_data(ALL_DATA.matches,HEADERS[display],update_status,start_index,apply_filter=True)
     elif d == "Games":
-        if resize:
-            if MAIN_WINDOW_SIZE[0] == "large":
-                window.geometry("1315x" + str(MAIN_WINDOW_SIZE[2]))
-        print_data(ALL_DATA[1],HEADERS[display],update_status,start_index,apply_filter=True)
+        print_data(ALL_DATA.games,HEADERS[display],update_status,start_index,apply_filter=True)
     elif d == "Plays":
-        if resize:
-            if MAIN_WINDOW_SIZE[0] == "large":
-                window.geometry("1665x" + str(MAIN_WINDOW_SIZE[2]))
-        print_data(ALL_DATA[2],HEADERS[display],update_status,start_index,apply_filter=True)
+        print_data(ALL_DATA.plays,HEADERS[display],update_status,start_index,apply_filter=True)
     elif d == "Drafts":
         print_data(DRAFTS_TABLE,HEADERS[display],update_status,start_index,apply_filter=True)
     elif d == "Picks":
@@ -664,9 +645,11 @@ def get_all_data(fp_logs,fp_drafts,copy):
         clear_button["state"] = tk.NORMAL
         data_loaded = True
     os.chdir(FILEPATH_ROOT)
-def print_data(data,headers,update_status,start_index,apply_filter):
-    global curr_data
 
+def print_data(
+    data: Union[MatchData, GameData, PlayData, list], headers: list[str],
+    update_status: bool, start_index: int, apply_filter: bool) -> None:
+    global curr_data
     small_headers = ["P1_Roll","P2_Roll","P1_Wins","P2_Wins","Game_Num","Play_Num","Turn_Num","Pack_Num","Pick_Num","Pick_Ovr"]
     med_headers = ["Avail_1","Avail_2","Avail_3","Avail_4","Avail_5","Avail_6","Avail_7","Avail_8","Avail_9","Avail_10","Avail_11","Avail_12","Avail_13","Avail_14"]
     large_headers = ["Card"]
@@ -680,10 +663,11 @@ def print_data(data,headers,update_status,start_index,apply_filter):
     tree1["columns"] = headers
 
     # Insert column headers into tree
-    for i in tree1["columns"]:
-        width = header_widths.get(i,100)
-        tree1.column(i,anchor="center",stretch=False,width=width)
-        tree1.heading(i,text=i,command=lambda _col=i: sort_column2(_col,False,tree1))
+    for header in tree1["columns"]:
+        width = header_widths.get(header,100)
+        tree1.column(header, anchor="center", stretch=False, width=width)
+        tree1.heading(header, text=header, 
+        command=lambda _col=header: sort_column2(_col,False,tree1))
     tree1.column(0,anchor="w")
     
     # Build dataframe being printed.
@@ -711,19 +695,19 @@ def print_data(data,headers,update_status,start_index,apply_filter):
         for key in filter_dict:
             if key not in headers:
                 continue
-            for i in filter_dict[key]:
-                if i[2:].isnumeric():
-                    value = int(i[2:])
+            for header in filter_dict[key]:
+                if header[2:].isnumeric():
+                    value = int(header[2:])
                 else:
-                    value = i[2:]
-                if i[0] == "=":
+                    value = header[2:]
+                if header[0] == "=":
                     if key == "Date":
                         filtered_list.append(df[(df[key].str.contains(value[0:10]))])
                     else:
                         filtered_list.append(df[(df[key] == value)])
-                elif i[0] == ">":
+                elif header[0] == ">":
                     filtered_list.append(df[(df[key] > value)])
-                elif i[0] == "<":
+                elif header[0] == "<":
                     filtered_list.append(df[(df[key] < value)])
             if len(filtered_list) == 0:
                 pass
@@ -754,10 +738,10 @@ def print_data(data,headers,update_status,start_index,apply_filter):
     next_button["state"] = tk.DISABLED if end_index == len(df_rows) else tk.NORMAL
     back_button["state"] = tk.DISABLED if start_index == 0 else tk.NORMAL
 
-    for i in range(start_index,end_index):
-        tree1.insert("","end",values=df_rows[i])
+    for header in range(start_index,end_index):
+        tree1.insert("","end",values=df_rows[header])
 
-    if update_status == True:
+    if update_status:
         update_status_bar(status=f"Displaying: {str(start_index + 1)}-{str(end_index)} of {str(len(df_rows))} total records.")
 def get_lists():
     global ALL_DECKS
