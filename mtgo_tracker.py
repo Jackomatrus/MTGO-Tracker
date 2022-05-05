@@ -1,5 +1,5 @@
 import tkinter as tk
-from typing import Union
+from typing import Union, Literal
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -79,7 +79,7 @@ def save(exit: bool) -> None:
     os.chdir(FILEPATH_ROOT)
 
     if exit:
-        close()
+        window.destroy()
 
 def save_window(exit: bool) -> None:
     height = 100
@@ -115,7 +115,7 @@ def save_window(exit: bool) -> None:
 
     if exit:
         t = "Save data before exiting?"
-        button_nosave =  tk.Button(bot_frame,text="Don't Save",width=10,command=lambda : [close_save_window(),close()])
+        button_nosave =  tk.Button(bot_frame,text="Don't Save",width=10,command=lambda : [close_save_window(),window.destroy()])
         button_save = tk.Button(bot_frame,text="Save",width=10,command=lambda : [close_save_window(),save(exit=True)])
         button_nosave.grid(row=0,column=1,padx=5,pady=5)
     else:
@@ -2805,8 +2805,6 @@ def get_winners():
     global uaw
     global ask_to_save
 
-    gw_index = HEADERS["Games"].index("Game_Winner")
-    gn_index = HEADERS["Games"].index("Game_Num")
     changed = 0
     total = 0
     exit = False
@@ -2817,16 +2815,16 @@ def get_winners():
         game_num = key.rsplit("-",1)[1]
         if not exit:
             for game in ALL_DATA.games:
-                if (game.Match_ID == match_id) & (str(game[gn_index]) == game_num) & (game[gw_index] == "NA"):
+                if (game.Match_ID == match_id) & (str(game.Game_Num) == game_num) & (game.Game_Winner == "NA"):
                     ask_for_winner(ALL_DATA.raw_game_data[key],game.P1,game.P2,count+1,len(ALL_DATA.raw_game_data))
                     total += 1
                     if uaw == "Exit.":
                         exit = True
-                        raw_dict_new[key] = ALL_DATA[3][key]
+                        raw_dict_new[key] = ALL_DATA.raw_game_data[key]
                     elif uaw == "NA":
-                        raw_dict_new[key] = ALL_DATA[3][key]
+                        raw_dict_new[key] = ALL_DATA.raw_game_data[key]
                     else:
-                        game[gw_index] = uaw
+                        game.Game_Winner = uaw
                         changed += 1
                     break
         if exit:
@@ -2846,11 +2844,12 @@ def get_winners():
 
         ask_to_save = True
 
-    if total == 0:
+    if not total:
         update_status_bar(status=f"No Applicable Games found.")
     else:
         update_status_bar(status=f"Game_Winner updated for {changed} Game{'' if changed == 1 else 's'}.")
     set_display("Matches",update_status=False,reset=True)
+
 def ask_for_winner(ga_list,p1,p2,n,total):
     # List of game actions (Strings)
     # String = P1
@@ -2913,7 +2912,8 @@ def ask_for_winner(ga_list,p1,p2,n,total):
     button2.grid(row=0,column=1,padx=10,pady=10)
     
     gw.protocol("WM_DELETE_WINDOW", lambda : close_gw_window("Exit."))    
-    gw.wait_window()  
+    gw.wait_window() 
+ 
 def get_stats():
     width =  1350
     height = 750
@@ -3005,58 +3005,33 @@ def get_stats():
         mid_frame9.grid_remove()
         mid_frame10.grid_remove()
 
-    def defocus(event):
-        # Clear Auto-Highlight in Combobox menu.
-        menu_1.selection_clear()
-        menu_2.selection_clear()
-        menu_3.selection_clear()
-        menu_4.selection_clear()
-        menu_5.selection_clear()
+    def defocus(event: tk.Event):
+        event.widget.selection_clear()
 
     def match_history(hero,opp,mformat,lformat,deck,opp_deck,date_range,s_type):
         stats_window.title("Statistics - Card Data: " + hero)
         clear_frames()
-        def tree1_skip(event):
-            if tree1.identify_region(event.x,event.y) == "separator":
-                return "break"
-            if tree1.identify_region(event.x,event.y) == "heading":
-                return "break"
-        def tree1_unselect(event):
-            if tree1.identify_region(event.x,event.y) != "cell":
-                tree1.selection_set(())  
-            if tree1.identify_region(event.x,event.y) == "separator":
-                return "break"
-            if tree1.identify_region(event.x,event.y) == "heading":
-                return "break"
-        def tree2_skip(event):
-            if tree2.identify_region(event.x,event.y) == "separator":
-                return "break"
-            if tree2.identify_region(event.x,event.y) == "heading":
-                return "break"
-        def tree2_unselect(event):
-            if tree2.identify_region(event.x,event.y) != "cell":
-                tree2.selection_set(())  
-            if tree2.identify_region(event.x,event.y) == "separator":
-                return "break"
-            if tree2.identify_region(event.x,event.y) == "heading":
-                return "break"
-        def tree1_setup(tree):
+        def skip(event: tk.Event) -> Literal[None, 'break']:
+            x, y, widget = event.x, event.y, event.widget
+            if widget.identify_region(x, y) in ('separator', 'heading'):
+                return 'break'
+
+        def unselect(event: tk.Event) -> Literal[None, 'break']:
+            if event.widget.identify_region(event.x, event.y) != 'cell':
+                event.widget.selection_set(())
+            return skip(event)
+
+        def tree_setup(tree: ttk.Treeview) -> None:
             tree.place(relheight=1, relwidth=1)
-            tree.bind("<Button-1>",tree1_unselect)
-            tree.bind("<Enter>",tree1_skip)
-            tree.bind("<ButtonRelease-1>",tree1_unselect)
-            tree.bind("<Motion>",tree1_skip)
-        def tree2_setup(tree):
-            tree.place(relheight=1, relwidth=1)
-            tree.bind("<Button-1>",tree2_unselect)
-            tree.bind("<Enter>",tree2_skip)
-            tree.bind("<ButtonRelease-1>",tree2_unselect)
-            tree.bind("<Motion>",tree2_skip)   
+            tree.bind("<Button-1>",unselect)
+            tree.bind("<Enter>",skip)
+            tree.bind("<ButtonRelease-1>",unselect)
+            tree.bind("<Motion>",skip)
 
         tree1 = ttk.Treeview(mid_frame9,show="headings",padding=10)
         tree2 = ttk.Treeview(mid_frame10,show="headings",padding=10)
-        tree1_setup(tree1)
-        tree2_setup(tree2)
+        tree_setup(tree1)
+        tree_setup(tree2)
         mid_frame.grid_rowconfigure(0,weight=1)
         mid_frame.grid_rowconfigure(1,weight=0)
         mid_frame.grid_columnconfigure(0,weight=1)
@@ -4546,7 +4521,7 @@ def get_stats():
         format_options = df0_i[(df0_i.P1 == player.get())].Format.value_counts().keys().tolist()
         format_options.insert(0,"All Formats")
 
-        menu_2["values"] = format_options
+        format_dropdown["values"] = format_options
         mformat.set(format_options[0]) 
 
     def update_hero(*argv):
@@ -4556,10 +4531,10 @@ def get_stats():
         update_opp_deck_menu()
         update_opp_menu()
 
-        menu_2["state"]   = "readonly"
-        menu_4["state"]   = "readonly"
-        menu_5["state"]   = "readonly"
-        menu_6["state"]   = tk.NORMAL
+        format_dropdown["state"]   = "readonly"
+        deck_dropdown["state"]   = "readonly"
+        opp_deck_dropdown["state"]   = "readonly"
+        stat_type_select["state"]   = tk.NORMAL
 
     def update_opp_menu(*argv):
         df = df0_i[(df0_i.P1 == player.get())]
@@ -4569,19 +4544,19 @@ def get_stats():
         if s_type.get() != "Opponent Stats":
             opponents.insert(0,"Opponent")
 
-        menu_1["values"] = opponents
+        opp_dropdown["values"] = opponents
         opponent.set(opponents[0])
 
     def update_format(*argv):
         if mformat.get() in INPUT_OPTIONS["Limited Formats"]:
             lim_format.set("All Limited Formats")
-            menu_3["state"] = "readonly"
-            menu_3.grid(row=0,column=2,padx=5,pady=10)
+            limited_dropdown["state"] = "readonly"
+            limited_dropdown.grid(row=0,column=2,padx=5,pady=10)
             update_lim_menu()
         else:
             lim_format.set("All Limited Formats")
-            menu_3["state"] = tk.DISABLED
-            menu_3.grid_forget()
+            limited_dropdown["state"] = tk.DISABLED
+            limited_dropdown.grid_forget()
         update_deck_menu()
         update_opp_deck_menu()
 
@@ -4593,7 +4568,7 @@ def get_stats():
         lim_formats_played = df0_i[(df0_i.P1 == player.get()) & (df0_i.Format == mformat.get())].Limited_Format.value_counts().keys().tolist()
         lim_formats_played.insert(0,"All Limited Formats")
 
-        menu_3["values"] = lim_formats_played
+        limited_dropdown["values"] = lim_formats_played
         lim_format.set(lim_formats_played[0])
 
     def update_deck_menu(*argv):
@@ -4618,7 +4593,7 @@ def get_stats():
                     break
         decks_played.insert(0,"All Decks")
 
-        menu_4["values"] = decks_played
+        deck_dropdown["values"] = decks_played
         deck.set(decks_played[0])
 
     def update_opp_deck_menu(*argv):
@@ -4636,7 +4611,7 @@ def get_stats():
         opp_decks_played = df.P2_Subarch.value_counts().keys().tolist()
         opp_decks_played.insert(0,"All Opp. Decks")
 
-        menu_5["values"] = opp_decks_played
+        opp_deck_dropdown["values"] = opp_decks_played
         opp_deck.set(opp_decks_played[0])
 
     def update_s_type(*argv):
@@ -4645,40 +4620,40 @@ def get_stats():
         update_deck_menu()
         update_opp_deck_menu()
         if s_type.get() == "Match History":
-            menu_1["state"] = tk.DISABLED
-            menu_2["state"] = "readonly"
-            menu_4["state"] = tk.DISABLED
-            menu_5["state"] = tk.DISABLED
-            date_entry_1["state"] = tk.DISABLED
-            date_entry_2["state"] = tk.DISABLED
+            opp_dropdown["state"] = tk.DISABLED
+            format_dropdown["state"] = "readonly"
+            deck_dropdown["state"] = tk.DISABLED
+            opp_deck_dropdown["state"] = tk.DISABLED
+            start_date_entry["state"] = tk.DISABLED
+            end_date_entry["state"] = tk.DISABLED
         elif s_type.get() == "Time Data":
-            menu_1["state"] = tk.DISABLED
-            menu_2["state"] = "readonly"
-            menu_4["state"] = "readonly"
-            menu_5["state"] = tk.DISABLED
-            date_entry_1["state"] = "readonly"
-            date_entry_2["state"] = "readonly"
+            opp_dropdown["state"] = tk.DISABLED
+            format_dropdown["state"] = "readonly"
+            deck_dropdown["state"] = "readonly"
+            opp_deck_dropdown["state"] = tk.DISABLED
+            start_date_entry["state"] = "readonly"
+            end_date_entry["state"] = "readonly"
         elif s_type.get() == "Opponent Stats":
-            menu_1["state"] = "readonly"
-            menu_2["state"] = tk.DISABLED
-            menu_4["state"] = tk.DISABLED
-            menu_5["state"] = tk.DISABLED
-            date_entry_1["state"] = tk.DISABLED
-            date_entry_2["state"] = tk.DISABLED
+            opp_dropdown["state"] = "readonly"
+            format_dropdown["state"] = tk.DISABLED
+            deck_dropdown["state"] = tk.DISABLED
+            opp_deck_dropdown["state"] = tk.DISABLED
+            start_date_entry["state"] = tk.DISABLED
+            end_date_entry["state"] = tk.DISABLED
         else:
-            menu_1["state"] = tk.DISABLED
-            menu_2["state"] = "readonly"
-            menu_4["state"] = "readonly"
-            menu_5["state"] = "readonly"
-            date_entry_1["state"] = "readonly"
-            date_entry_2["state"] = "readonly"
+            opp_dropdown["state"] = tk.DISABLED
+            format_dropdown["state"] = "readonly"
+            deck_dropdown["state"] = "readonly"
+            opp_deck_dropdown["state"] = "readonly"
+            start_date_entry["state"] = "readonly"
+            end_date_entry["state"] = "readonly"
         load_data()
 
     def load_data(*argv):
-        if date_entry_1.get() < date_entry_2.get():
-            dr = [date_entry_1.get() + "-00:00",date_entry_2.get() + "-23:59"]
+        if start_date_entry.get() < end_date_entry.get():
+            dr = [start_date_entry.get() + "-00:00",end_date_entry.get() + "-23:59"]
         else:
-            dr = [date_entry_1.get() + "-00:00",date_entry_2.get() + "-23:59"]
+            dr = [start_date_entry.get() + "-00:00",end_date_entry.get() + "-23:59"]
         if s_type.get() == "Match History":
             match_history(player.get(),opponent.get(),mformat.get(),lim_format.get(),deck.get(),opp_deck.get(),dr,s_type.get())
         elif s_type.get() == "Match Stats":
@@ -4727,75 +4702,71 @@ def get_stats():
     s_type = tk.StringVar()
     s_type.set(stat_types[0])
     
-    menu_1 = ttk.Combobox(top_frame,textvariable=opponent,width=12,
+    opp_dropdown = ttk.Combobox(top_frame,textvariable=opponent,width=12,
         state="readonly",font="Helvetica 14",justify=tk.CENTER)
-    menu_2 = ttk.Combobox(top_frame,textvariable=mformat,width=12,
+    format_dropdown = ttk.Combobox(top_frame,textvariable=mformat,width=12,
         state="readonly",font="Helvetica 14",justify=tk.CENTER)
-    menu_3 = ttk.Combobox(top_frame,textvariable=lim_format,width=12,
+    limited_dropdown = ttk.Combobox(top_frame,textvariable=lim_format,width=12,
         state="readonly",font="Helvetica 14",justify=tk.CENTER)
-    menu_4 = ttk.Combobox(top_frame,textvariable=deck,width=12,
+    deck_dropdown = ttk.Combobox(top_frame,textvariable=deck,width=12,
         state="readonly",font="Helvetica 14",justify=tk.CENTER)
-    menu_5 = ttk.Combobox(top_frame,textvariable=opp_deck,width=12,
+    opp_deck_dropdown = ttk.Combobox(top_frame,textvariable=opp_deck,width=12,
         state="readonly",font="Helvetica 14",justify=tk.CENTER)
-    date_entry_1 = DateEntry(top_frame,date_pattern="y-mm-dd",width=10,
+    start_date_entry = DateEntry(top_frame,date_pattern="y-mm-dd",width=10,
         year=int(date_min[0:4]),month=int(date_min[5:7]),day=int(date_min[8:10]),
         font="Helvetica 14",state="readonly")
-    date_entry_2 = DateEntry(top_frame,date_pattern="y-mm-dd",width=10,
+    end_date_entry = DateEntry(top_frame,date_pattern="y-mm-dd",width=10,
         year=today.year,month=today.month,day=today.day,
         font="Helvetica 14",state="readonly")
-    menu_6 = tk.OptionMenu(top_frame,s_type,*stat_types)
+    stat_type_select = tk.OptionMenu(top_frame,s_type,*stat_types)
     
-    menu_1["state"] = tk.DISABLED
-    menu_2["state"] = tk.DISABLED
-    menu_3["state"] = tk.DISABLED
-    menu_4["state"] = tk.DISABLED
-    menu_5["state"] = tk.DISABLED
-    menu_6["state"] = tk.DISABLED
+    opp_dropdown["state"] = format_dropdown["state"] = limited_dropdown["state"]\
+    = deck_dropdown["state"] = opp_deck_dropdown["state"] \
+    = stat_type_select["state"] = tk.DISABLED
 
-    menu_1.bind("<FocusIn>",defocus)
-    menu_2.bind("<FocusIn>",defocus)
-    menu_3.bind("<FocusIn>",defocus)
-    menu_4.bind("<FocusIn>",defocus)
-    menu_5.bind("<FocusIn>",defocus)
+    opp_dropdown.bind("<FocusIn>",defocus)
+    format_dropdown.bind("<FocusIn>",defocus)
+    limited_dropdown.bind("<FocusIn>",defocus)
+    deck_dropdown.bind("<FocusIn>",defocus)
+    opp_deck_dropdown.bind("<FocusIn>",defocus)
 
-    menu_1.grid(row=0,column=0,padx=5,pady=10,sticky="e")
-    menu_2.grid(row=0,column=1,padx=5,pady=10)
-    menu_4.grid(row=0,column=3,padx=5,pady=10)
-    menu_5.grid(row=0,column=4,padx=5,pady=10)
-    date_entry_1.grid(row=0,column=5,padx=5,pady=10)
-    date_entry_2.grid(row=0,column=6,padx=5,pady=10,sticky="w")
-    menu_6.grid(row=0,column=7,padx=(5,10),pady=10)
-    menu_6.config(width=15)
+    opp_dropdown.grid(row=0,column=0,padx=5,pady=10,sticky="e")
+    format_dropdown.grid(row=0,column=1,padx=5,pady=10)
+    deck_dropdown.grid(row=0,column=3,padx=5,pady=10)
+    opp_deck_dropdown.grid(row=0,column=4,padx=5,pady=10)
+    start_date_entry.grid(row=0,column=5,padx=5,pady=10)
+    end_date_entry.grid(row=0,column=6,padx=5,pady=10,sticky="w")
+    stat_type_select.grid(row=0,column=7,padx=(5,10),pady=10)
+    stat_type_select.config(width=15)
     
-    menu_6.config(bg="black",fg="white",activebackground="black",activeforeground="white")
-    menu_6["menu"].config(bg="black",fg="white",borderwidth=0)
+    stat_type_select.config(bg="black",fg="white",activebackground="black",activeforeground="white")
+    stat_type_select["menu"].config(bg="black",fg="white",borderwidth=0)
 
     player.trace("w",update_hero)
     mformat.trace("w",update_format)
     lim_format.trace("w",update_lim_format)
     s_type.trace("w",update_s_type)
 
-    menu_1.bind("<<ComboboxSelected>>",load_data)
-    menu_2.bind("<<ComboboxSelected>>",load_data)
-    menu_3.bind("<<ComboboxSelected>>",load_data)
-    menu_4.bind("<<ComboboxSelected>>",load_data)
-    menu_5.bind("<<ComboboxSelected>>",load_data)
-    date_entry_1.bind("<<DateEntrySelected>>",load_data)
-    date_entry_2.bind("<<DateEntrySelected>>",load_data)
+    opp_dropdown.bind("<<ComboboxSelected>>",load_data)
+    format_dropdown.bind("<<ComboboxSelected>>",load_data)
+    limited_dropdown.bind("<<ComboboxSelected>>",load_data)
+    deck_dropdown.bind("<<ComboboxSelected>>",load_data)
+    opp_deck_dropdown.bind("<<ComboboxSelected>>",load_data)
+    start_date_entry.bind("<<DateEntrySelected>>",load_data)
+    end_date_entry.bind("<<DateEntrySelected>>",load_data)
 
     player.set(HERO)
     update_s_type(s_type.get())
 
     stats_window.title("Statistics - Match Data: " + player.get())
     stats_window.protocol("WM_DELETE_WINDOW", lambda : close_stats_window())
-def close():
-    # Close window and exit program.
-    window.destroy()
+
 def exit_select():
     if ask_to_save:
         save_window(exit=True)
     else:
-        close()
+        window.destroy()
+
 def load_window_size_setting():
     global MAIN_WINDOW_SIZE
     global ln_per_page
@@ -4810,9 +4781,11 @@ def load_window_size_setting():
             elif MAIN_WINDOW_SIZE[0] == "large":
                 ln_per_page = 35
         os.chdir(cwd)
-def update_status_bar(status):
+
+def update_status_bar(status: str) -> None:
     status_label.config(text=status)
     print(status)
+
 def remove_record(ignore):
     global ALL_DATA
     global ALL_DATA_INVERTED
