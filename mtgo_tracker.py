@@ -160,7 +160,7 @@ def set_default_window_size():
         window.geometry(str(MAIN_WINDOW_SIZE[1]) + "x" + str(MAIN_WINDOW_SIZE[2]))
         update_status_bar(status="Default Window Size saved.")
         os.chdir(FILEPATH_ROOT)
-        set_display(display,update_status=False,start_index=0,reset=False)
+        set_display(display,update_status=False,reset=False)
         close_window()
 
     def close_window():
@@ -491,7 +491,7 @@ def startup():
         stats_button["state"] = tk.NORMAL
     data_loaded = True
 
-    set_display("Matches",update_status=True,start_index=0,reset=True)
+    set_display("Matches", update_status=True,  reset=True)
     data_menu.entryconfig("Set Default Hero",state=tk.NORMAL)
     data_menu.entryconfig("Clear Loaded Data",state=tk.NORMAL)
     file_menu.entryconfig("Save Data",state=tk.NORMAL)
@@ -508,7 +508,8 @@ def save_settings():
     pickle.dump(SETTINGS,open("SETTINGS","wb"))
     pickle.dump(MAIN_WINDOW_SIZE,open("MAIN_WINDOW_SIZE","wb"))
     os.chdir(FILEPATH_ROOT)
-def set_display(d,update_status,start_index,reset):
+def set_display(d: str, update_status: bool, reset: bool, start_index: int=0
+    ) -> None:
     global display
     global prev_display
     global display_index
@@ -525,6 +526,7 @@ def set_display(d,update_status,start_index,reset):
 
     text_frame.config(text=display)
     
+    # disable buttons for MATCHES, GAMES, PLAYS, DRAFTS, and PICKS if unavailable
     button_state = tk.NORMAL if len(ALL_DATA[0]) > 0 else tk.DISABLED
     match_button["state"] = game_button["state"] = play_button["state"] = button_state
     button_state = tk.NORMAL if len(DRAFTS_TABLE) > 0 else tk.DISABLED
@@ -542,7 +544,8 @@ def set_display(d,update_status,start_index,reset):
         print_data(PICKS_TABLE,HEADERS[display],update_status,start_index,apply_filter=True)
     revise_button["state"] = tk.DISABLED
     remove_button["state"] = tk.DISABLED
-def get_all_data(fp_logs,fp_drafts,copy):
+
+def get_all_data(logs_path: Path,drafts_path: Path,copy: bool) -> None:
     global ALL_DATA
     global ALL_DATA_INVERTED
     global TIMEOUT
@@ -556,91 +559,85 @@ def get_all_data(fp_logs,fp_drafts,copy):
     match_count = 0
     draft_count = 0
     skip_dict = {}
-    if (fp_logs != "No Default GameLogs Folder"):
+    if logs_path != "No Default GameLogs Folder":
         new_data = AllData()
-        os.chdir(fp_logs)
-        for (root,dirs,files) in os.walk(fp_logs):
-            for i in files:
-                if ("Match_GameLog_" not in i) or (len(i) < 30):
+        os.chdir(logs_path)
+        for (root,dirs,files) in os.walk(logs_path):
+            for file in files:
+                if ("Match_GameLog_" not in file) or (len(file) < 30):
                     pass
-                elif (i in PARSED_FILE_DICT):
+                elif (file in PARSED_FILE_DICT):
                     os.chdir(root)
                 else:
                     os.chdir(root)
-                    with io.open(i,"r",encoding="ansi") as gamelog:
+                    with io.open(file,"r",encoding="ansi") as gamelog:
                         initial = gamelog.read()
-                        mtime = time.localtime(os.path.getmtime(i))
-                    # spectator games are almost impossible to parse
+                    mtime = time.localtime(os.path.getmtime(file))
+                    # games you spectate are almost impossible to parse
                     if 'has started watching' in initial: 
                         continue
-                    parsed_data = modo.get_all_data(initial, mtime)
-                    if isinstance(parsed_data, str):
-                        skip_dict[i] = parsed_data
+                    try:
+                        parsed_data = modo.get_all_data(initial, mtime)
+                    except ValueError as e: #  catch parsing errors
+                        print(f'Enocountered {e} in file {file}. Skipping match')
                         continue
-                    PARSED_FILE_DICT[i] = (
-                        parsed_data[0][0],
+                    PARSED_FILE_DICT[file] = (parsed_data[0].Match_ID,
                         datetime.datetime.fromtimestamp(time.mktime(mtime)))
                     if copy:
                         try:
-                            shutil.copy(i,FILEPATH_LOGS_COPY)
+                            shutil.copy(file,FILEPATH_LOGS_COPY)
                             os.chdir(FILEPATH_LOGS_COPY)
-                            os.utime(i,(datetime.datetime.now().timestamp(),PARSED_FILE_DICT[i][1].timestamp()))
+                            os.utime(file,(datetime.datetime.now().timestamp(),PARSED_FILE_DICT[file][1].timestamp()))
                             os.chdir(root)
                         except shutil.SameFileError:
                             pass
-                    new_data[0].append(parsed_data[0])
-                    for i in parsed_data[1]:
-                        new_data[1].append(i)
-                    for i in parsed_data[2]:
-                        new_data[2].append(i)
-                    for i in parsed_data[3]:
-                        new_data[3] = new_data[3] | parsed_data[3]
+                    new_data.matches.append(parsed_data[0])
+                    new_data.games.extend(parsed_data[1])
+                    new_data.plays.extend(parsed_data[2])
+                    new_data.raw_game_data = new_data[3] | parsed_data[3]
                     if parsed_data[4][0]: # if there was a timeout in match
                         TIMEOUT[parsed_data[0][0]] = parsed_data[4][1]
                     match_count += 1
         new_data_inverted = modo.invert_join(new_data)
         for index in range(3):
-            for j in new_data[index]:
-                ALL_DATA[index].append(j)
-            for j in new_data_inverted[index]:
-                ALL_DATA_INVERTED[index].append(j)
+            ALL_DATA[index].extend(new_data[index])
+            ALL_DATA_INVERTED[index].extend(new_data[index])
         ALL_DATA[3] = ALL_DATA[3] | new_data[3]
         ALL_DATA_INVERTED[3] = ALL_DATA_INVERTED[3] | new_data_inverted[3]
 
-    if (fp_drafts != "No Default DraftLogs Folder"):
-        os.chdir(fp_drafts)
-        for (root,dirs,files) in os.walk(fp_drafts):
-            break
-        for i in files:
-            if (i.count(".") != 3) or (i.count("-") != 4) or (".txt" not in i):
-                pass
-            elif (i in PARSED_DRAFT_DICT):
-                os.chdir(root)
-            else:
-                os.chdir(root)
-                with io.open(i,"r",encoding="ansi") as gamelog:
-                    initial = gamelog.read()   
-                parsed_data = log_parser.parse_draft_log(i,initial) 
-                DRAFTS_TABLE.extend(parsed_data[0])
-                PICKS_TABLE.extend(parsed_data[1])
-                PARSED_DRAFT_DICT[i] = parsed_data[2]
-                if copy:
-                    try:
-                        shutil.copy(i,FILEPATH_DRAFTS_COPY)
-                        os.chdir(FILEPATH_DRAFTS_COPY)
-                        os.chdir(root)
-                    except shutil.SameFileError:
-                        pass
-                draft_count += 1
+    if drafts_path != "No Default DraftLogs Folder":
+        os.chdir(drafts_path)
+        for (root,dirs,files) in os.walk(drafts_path):
+            for file in files:
+                if (file.count(".") != 3) or (file.count("-") != 4) or (".txt" not in file):
+                    pass
+                elif (file in PARSED_DRAFT_DICT):
+                    os.chdir(root)
+                else:
+                    os.chdir(root)
+                    with io.open(file,"r",encoding="ansi") as gamelog:
+                        initial = gamelog.read()
+                    parsed_data = log_parser.parse_draft_log(file,initial) 
+                    DRAFTS_TABLE.extend(parsed_data[0])
+                    PICKS_TABLE.extend(parsed_data[1])
+                    PARSED_DRAFT_DICT[file] = parsed_data[2]
+                    if copy:
+                        try:
+                            shutil.copy(file,FILEPATH_DRAFTS_COPY)
+                            os.chdir(FILEPATH_DRAFTS_COPY)
+                            os.chdir(root)
+                        except shutil.SameFileError:
+                            pass
+                    draft_count += 1
 
     match_string = f'{match_count} new Match{"es" if match_count != 1 else ""}'
     draft_string = f'{draft_count} new Draft{"s" if draft_count != 1 else ""}'
     update_status_bar(status=f"Imported {match_string} and {draft_string}.")
 
-    if (match_count > 0) or (draft_count > 0):
+    if match_count or draft_count:
         ask_to_save = True
 
-    if (len(ALL_DATA[0]) != 0) or (len(DRAFTS_TABLE) != 0):
+    if len(ALL_DATA[0]) or len(DRAFTS_TABLE):
         filter_button["state"] = tk.NORMAL
         clear_button["state"] = tk.NORMAL
         data_loaded = True
@@ -676,10 +673,10 @@ def print_data(
     elif data == None:
         df = df = pd.DataFrame([],columns=headers)
     elif (HERO != "") & (display == "Matches"):
-        df = pd.DataFrame(ALL_DATA_INVERTED[0],columns=headers)
+        df = pd.DataFrame(ALL_DATA_INVERTED.matches,columns=headers)
         df = df[(df.P1 == HERO)]
     elif (HERO != "") & (display == "Games"):
-        df = pd.DataFrame(ALL_DATA_INVERTED[1],columns=headers)
+        df = pd.DataFrame(ALL_DATA_INVERTED.games,columns=headers)
         df = df[(df.P1 == HERO)]
     elif (display == "Drafts"):
         df = pd.DataFrame(DRAFTS_TABLE,columns=headers)
@@ -765,7 +762,7 @@ def get_lists():
         ALL_DECKS[i] = month_decks
     ask_to_save = True
 
-    label = f"Imported Sample Decklists. {str(len(errors))} error(s) found"
+    label = f"Imported Sample Decklists. {len(errors)} error(s) found"
     if len(errors) == 0:
         label += "."
     else:
@@ -832,78 +829,41 @@ def input_missing_data():
         update_status_bar(status="No Matches with Missing Data.")
     else:
         ALL_DATA_INVERTED = modo.invert_join(ALL_DATA)
-        set_display("Matches",update_status=True,start_index=0,reset=True)
+        set_display("Matches",update_status=True,reset=True)
 def deck_data_guess(update_type):
     global ALL_DATA
     global ALL_DATA_INVERTED
     global ask_to_save
 
-    date_index = HEADERS["Matches"].index("Date")
-    p1_index = HEADERS["Matches"].index("P1")
-    p2_index = HEADERS["Matches"].index("P2")
-    p1_sa_index = HEADERS["Matches"].index("P1_Subarch")
-    p2_sa_index = HEADERS["Matches"].index("P2_Subarch")
-    format_index = HEADERS["Matches"].index("Format")
-    df2 = pd.DataFrame(ALL_DATA[2],columns=HEADERS["Plays"])
+    df2 = pd.DataFrame(ALL_DATA.plays,columns=HEADERS["Plays"])
 
-    for i in ALL_DATA[0]:
-        yyyy_mm = i[date_index][0:4] + "-" + i[date_index][5:7]
-        players = [i[p1_index],i[p2_index]]
-
-        # Update P1_Subarch, P2_Subarch for all Limited Matches.
-        if update_type == "Limited":
-            if i[format_index] in INPUT_OPTIONS["Limited Formats"]:
-                ask_to_save = True
-                cards1 = df2[(df2.Casting_Player == players[0]) & (df2.Match_ID == i[0])].Primary_Card.value_counts().keys().tolist()
-                cards2 = df2[(df2.Casting_Player == players[1]) & (df2.Match_ID == i[0])].Primary_Card.value_counts().keys().tolist()
-                i[p1_sa_index] = modo.get_limited_subarch(cards1)
-                i[p2_sa_index] = modo.get_limited_subarch(cards2)
-
-        # Update P1_Subarch, P2_Subarch for all Constructed Matches.
-        elif update_type == "Constructed":
-            if i[format_index] in INPUT_OPTIONS["Constructed Formats"]:
-                ask_to_save = True
-                cards1 = df2[(df2.Casting_Player == players[0]) & (df2.Match_ID == i[0])].Primary_Card.value_counts().keys().tolist()
-                cards2 = df2[(df2.Casting_Player == players[1]) & (df2.Match_ID == i[0])].Primary_Card.value_counts().keys().tolist()
-                p1_data = modo.closest_list(set(cards1),ALL_DECKS,yyyy_mm)
-                p2_data = modo.closest_list(set(cards2),ALL_DECKS,yyyy_mm)
-                i[p1_sa_index] = p1_data[0]
-                i[p2_sa_index] = p2_data[0]
-
-        # Update P1_Subarch, P2_Subarch for all Matches.
-        elif update_type == "All":
-            ask_to_save = True
-            cards1 = df2[(df2.Casting_Player == players[0]) & (df2.Match_ID == i[0])].Primary_Card.value_counts().keys().tolist()
-            cards2 = df2[(df2.Casting_Player == players[1]) & (df2.Match_ID == i[0])].Primary_Card.value_counts().keys().tolist()
-            if i[format_index] in INPUT_OPTIONS["Limited Formats"]:
-                i[p1_sa_index] = modo.get_limited_subarch(cards1)
-                i[p2_sa_index] = modo.get_limited_subarch(cards2)
-            else: 
-                p1_data = modo.closest_list(set(cards1),ALL_DECKS,yyyy_mm)
-                p2_data = modo.closest_list(set(cards2),ALL_DECKS,yyyy_mm)
-                i[p1_sa_index] = p1_data[0]
-                i[p2_sa_index] = p2_data[0]
-
-        # Update P1_Subarch, P2_Subarch only if equal to "Unknown" or "NA".
+    for match in ALL_DATA.matches:
+        yyyy_mm = match.Date[0:4] + "-" + match.Date[5:7]
+        update_p1 = update_p2 = False
+        if (update_type == 'All'
+        or (match.Format in INPUT_OPTIONS["Limited Formats"] and update_type == 'Limited')
+        or (match.Format in INPUT_OPTIONS["Constructed Formats"] and update_type == 'Constructed')):
+            update_p1 = update_p2 = True
         elif update_type == "Unknowns":
-            if (i[p1_sa_index] == "Unknown") or (i[p1_sa_index] == "NA"):
-                ask_to_save = True
-                cards1 = df2[(df2.Casting_Player == players[0]) & (df2.Match_ID == i[0])].Primary_Card.value_counts().keys().tolist()
-                if i[format_index] in INPUT_OPTIONS["Limited Formats"]:
-                    i[p1_sa_index] = modo.get_limited_subarch(cards1)
-                else:
-                    p1_data = modo.closest_list(set(cards1),ALL_DECKS,yyyy_mm)
-                    i[p1_sa_index] = p1_data[0]
-            if (i[p2_sa_index] == "Unknown") or (i[p2_sa_index] == "NA"):
-                ask_to_save = True
-                cards2 = df2[(df2.Casting_Player == players[1]) & (df2.Match_ID == i[0])].Primary_Card.value_counts().keys().tolist()
-                if i[format_index] in INPUT_OPTIONS["Limited Formats"]:
-                    i[p2_sa_index] = modo.get_limited_subarch(cards2)
-                else:
-                    p2_data = modo.closest_list(set(cards2),ALL_DECKS,yyyy_mm)
-                    i[p2_sa_index] = p2_data[0]
+            update_p1 = match.P1_Subarch in ("Unknown", "NA")
+            update_p2 = match.P2_Subarch in ("Unknown", "NA")
+        if update_p1:
+            ask_to_save = True
+            cards = df2[(df2.Casting_Player == match.P1) & (df2.Match_ID == match[0])].Primary_Card.value_counts().keys().tolist()
+            if match.Format in INPUT_OPTIONS["Constructed Formats"]:
+                match.P1_Subarch = modo.closest_list(set(cards),ALL_DECKS,yyyy_mm)[0]
+            elif match.Format in INPUT_OPTIONS["Limited Formats"]:
+                match.P1_Subarch = modo.get_limited_subarch(cards)
+        if update_p2:
+            ask_to_save = True
+            cards = df2[(df2.Casting_Player == match.P2) & (df2.Match_ID == match[0])].Primary_Card.value_counts().keys().tolist()
+            if match.Format in INPUT_OPTIONS["Constructed Formats"]:
+                match.P2_Subarch = modo.closest_list(set(cards),ALL_DECKS,yyyy_mm)[0]
+            elif match.Format in INPUT_OPTIONS["Limited Formats"]:
+                match.P2_Subarch = modo.get_limited_subarch(cards)
 
     ALL_DATA_INVERTED = modo.invert_join(ALL_DATA)
+
 def rerun_decks_window():
     height = 200
     width =  400
@@ -932,7 +892,7 @@ def rerun_decks_window():
             t = "Updated the P1_Subarch, P2_Subarch columns for each Match in the Date Range: " + list(ALL_DECKS.keys())[0]
             deck_data_guess(update_type="All")
 
-        set_display("Matches",update_status=False,start_index=0,reset=True)
+        set_display("Matches",update_status=False,reset=True)
         if len(ALL_DECKS) > 1:
             t += " to " + list(ALL_DECKS.keys())[-1]
         update_status_bar(status=t)
@@ -1047,7 +1007,7 @@ def revise_entry_window(players,cards1,cards2,cards3,cards4,progress,mdata):
     subwindow.geometry("+%d+%d" %
         (window.winfo_x()+(window.winfo_width()/2)-(width/2),
         window.winfo_y()+(window.winfo_height()/2)-(height/2)))
-    message = "Date Played: " + mdata[HEADERS["Matches"].index("Date")]
+    message = "Date Played: " + mdata.Date
     str1 = '\n'.join(cards1)
     str2 = '\n'.join(cards2)
     str3 = '\n'.join(cards3)
@@ -1369,14 +1329,14 @@ def tree_double(event):
     clear_filter(update_status=False,reload_display=False)
     if (display == "Matches"):
         add_filter_setting("Match_ID",tree1.item(tree1.focus(),"values")[0],"=")
-        set_display("Games",update_status=True,start_index=0,reset=True)
+        set_display("Games",update_status=True,reset=True)
     elif (display == "Games"):
         add_filter_setting("Match_ID",tree1.item(tree1.focus(),"values")[0],"=")
         add_filter_setting("Game_Num",tree1.item(tree1.focus(),"values")[3],"=")
-        set_display("Plays",update_status=True,start_index=0,reset=True)
+        set_display("Plays",update_status=True,reset=True)
     elif (display == "Drafts"):
         add_filter_setting("Draft_ID",tree1.item(tree1.focus(),"values")[0],"=")
-        set_display("Picks",update_status=True,start_index=0,reset=True)
+        set_display("Picks",update_status=True,reset=True)
 def back2():
     global filter_dict
     if "Match_ID" in filter_dict:
@@ -1386,9 +1346,9 @@ def back2():
     else:
         clear_filter(update_status=False,reload_display=True)
     if display == "Games":
-        set_display("Matches",update_status=True,start_index=0,reset=True)
+        set_display("Matches",update_status=True,reset=True)
     elif display == "Plays":
-        set_display("Games",update_status=True,start_index=0,reset=True)
+        set_display("Games",update_status=True,reset=True)
 def back():
     global display_index
     display_index -= ln_per_page
@@ -1547,7 +1507,7 @@ def set_default_hero():
             save_settings()
             update_status_bar(status="Cleared Setting: Hero")
             if display != "Plays":
-                set_display(display,update_status=False,start_index=0,reset=True)
+                set_display(display,update_status=False,reset=True)
             stats_button["state"] = tk.DISABLED
             close_hero_window()
         elif entry_str in hero_options:
@@ -1555,7 +1515,7 @@ def set_default_hero():
             save_settings()
             update_status_bar(status="Updated Hero to " + HERO + ".")
             if display != "Plays":
-                set_display(display,update_status=False,start_index=0,reset=True)
+                set_display(display,update_status=False,reset=True)
             stats_button["state"] = tk.NORMAL
             close_hero_window()
         else:
@@ -1832,15 +1792,15 @@ def clear_filter(update_status,reload_display):
     if update_status:
         update_status_bar("Cleared All Filters.")
     if reload_display:
-        set_display(display,update_status=False,start_index=0,reset=True)
+        set_display(display,update_status=False,reset=True)
 def set_filter():
     height = 300
     width =  550
 
     if (display == "Drafts") or (display == "Picks"):
-        print_data(data=None,headers=HEADERS[display],update_status=False,start_index=0,apply_filter=False)
+        print_data(data=None,headers=HEADERS[display],update_status=False,apply_filter=False)
     else:
-        print_data(data=None,headers=HEADERS[display],update_status=False,start_index=0,apply_filter=False)
+        print_data(data=None,headers=HEADERS[display],update_status=False,apply_filter=False)
     update_status_bar(status=f"Applying Filters to {display} Table.")
 
     filter_window = tk.Toplevel(window)
@@ -1938,7 +1898,7 @@ def set_filter():
     
     def apply_filter():
         # Update table and close window.
-        set_display(display,update_status=True,start_index=0,reset=True)
+        set_display(display,update_status=True,reset=True)
         filter_window.grab_release()
         filter_window.destroy()
 
@@ -1953,7 +1913,7 @@ def set_filter():
         # Revert filter changes and close window.
         global filter_dict
         filter_dict = filter_init
-        set_display(display,update_status=True,start_index=0,reset=True)
+        set_display(display,update_status=True,reset=True)
         text_frame.config(text=display)
         filter_window.grab_release()
         filter_window.destroy()
@@ -2049,7 +2009,7 @@ def revise_record2():
         return
 
     selected = tree1.focus()
-    values = list(tree1.item(selected,"values"))
+    values = ALL_DATA.get_match(tree1.item(selected,"values")[0])
     sel_matchid = values[0]
 
     p1_index      = HEADERS["Matches"].index("P1")
@@ -2265,7 +2225,7 @@ def revise_record():
                 i[HEADERS["Matches"].index("Limited_Format")] = limited_format.get()
                 i[HEADERS["Matches"].index("Match_Type")] = match_type.get()                   
                 ALL_DATA_INVERTED = modo.invert_join(ALL_DATA)
-                set_display("Matches",update_status=True,start_index=0,reset=True)
+                set_display("Matches",update_status=True,reset=True)
                 break
         revise_window.grab_release()
         revise_window.destroy()
@@ -2744,7 +2704,7 @@ def import_window():
             match_dict = user_inputs(type="Matches")
             game_dict = user_inputs(type="Games")
             clear_loaded()
-            get_all_data(fp_logs=FILEPATH_LOGS_COPY,fp_drafts=FILEPATH_DRAFTS_COPY,copy=False)
+            get_all_data(logs_path=FILEPATH_LOGS_COPY,drafts_path=FILEPATH_DRAFTS_COPY,copy=False)
             for i in ALL_DATA[0]:
                 try:
                     i[HEADERS["Matches"].index("Draft_ID")] = match_dict[i[0]][1]
@@ -2784,7 +2744,7 @@ def import_window():
                 i[HEADERS["Drafts"].index("Match_Wins")] = wins
                 i[HEADERS["Drafts"].index("Match_Losses")] = losses
         else:
-            get_all_data(fp_logs=FILEPATH_LOGS,fp_drafts=FILEPATH_DRAFTS,copy=True)
+            get_all_data(logs_path=FILEPATH_LOGS,drafts_path=FILEPATH_DRAFTS,copy=True)
         clear_filter(update_status=False,reload_display=False)
         if data_loaded != False:
             data_menu.entryconfig("Set Default Hero",state=tk.NORMAL)
@@ -2795,7 +2755,7 @@ def import_window():
             data_menu.entryconfig("Apply Best Guess for Deck Names",state=tk.NORMAL)
             data_menu.entryconfig("Apply Associated Draft_IDs to Limited Matches",state=tk.NORMAL)
         #save_settings()
-        set_display("Matches",update_status=False,start_index=0,reset=True)
+        set_display("Matches",update_status=False,reset=True)
         close_import_window()
 
     def close_import_window():
@@ -2827,7 +2787,7 @@ def import_window():
     if (label1["text"]  == "No Default DraftLogs Folder") & (label2["text"]  == "No Default GameLogs Folder"):
         button3["state"] = tk.DISABLED
     else:
-        button3["state"] = tk.NORMAL   
+        button3["state"] = tk.NORMAL
 
     label1.grid(row=0,column=0,pady=(10,5))
     button1.grid(row=1,column=0,pady=0)
@@ -2846,21 +2806,19 @@ def get_winners():
     global ask_to_save
 
     gw_index = HEADERS["Games"].index("Game_Winner")
-    p1_index = HEADERS["Games"].index("P1")
-    p2_index = HEADERS["Games"].index("P2")
     gn_index = HEADERS["Games"].index("Game_Num")
     changed = 0
     total = 0
-
     exit = False
+    hero_index = HEADERS["Drafts"].index("Hero")
     raw_dict_new = {}
-    for count,key in enumerate(ALL_DATA[3]):
+    for count,key in enumerate(ALL_DATA.raw_game_data):
         match_id = key.rsplit("-",1)[0]
         game_num = key.rsplit("-",1)[1]
-        if exit == False:
-            for i in ALL_DATA[1]:
-                if (i[0] == match_id) & (str(i[gn_index]) == game_num) & (i[gw_index] == "NA"):
-                    ask_for_winner(ALL_DATA[3][key],i[p1_index],i[p2_index],count+1,len(ALL_DATA[3]))
+        if not exit:
+            for game in ALL_DATA.games:
+                if (game.Match_ID == match_id) & (str(game[gn_index]) == game_num) & (game[gw_index] == "NA"):
+                    ask_for_winner(ALL_DATA.raw_game_data[key],game.P1,game.P2,count+1,len(ALL_DATA.raw_game_data))
                     total += 1
                     if uaw == "Exit.":
                         exit = True
@@ -2868,33 +2826,31 @@ def get_winners():
                     elif uaw == "NA":
                         raw_dict_new[key] = ALL_DATA[3][key]
                     else:
-                        i[gw_index] = uaw
+                        game[gw_index] = uaw
                         changed += 1
                     break
         if exit:
             raw_dict_new[key] = ALL_DATA[3][key]
 
-    if len(ALL_DATA[3]) > len(raw_dict_new):
-        ALL_DATA[3] = raw_dict_new
+    if len(ALL_DATA.raw_game_data) > len(raw_dict_new):
+        ALL_DATA.raw_game_data = raw_dict_new
         modo.update_game_wins(ALL_DATA,TIMEOUT)
         ALL_DATA_INVERTED = modo.invert_join(ALL_DATA)
 
         df_inverted = pd.DataFrame(ALL_DATA_INVERTED[0],columns=HEADERS["Matches"])
-        for i in DRAFTS_TABLE:
-            wins = df_inverted[(df_inverted.Draft_ID == i[0]) & (df_inverted.P1 == i[hero_index]) & (df_inverted.Match_Winner == "P1")].shape[0]
-            losses = df_inverted[(df_inverted.Draft_ID == i[0]) & (df_inverted.P1 == i[hero_index]) & (df_inverted.Match_Winner == "P2")].shape[0]
-            i[HEADERS["Drafts"].index("Match_Wins")] = wins
-            i[HEADERS["Drafts"].index("Match_Losses")] = losses
+        for draft in DRAFTS_TABLE:
+            wins = df_inverted[(df_inverted.Draft_ID == draft[0]) & (df_inverted.P1 == draft[hero_index]) & (df_inverted.Match_Winner == "P1")].shape[0]
+            losses = df_inverted[(df_inverted.Draft_ID == draft[0]) & (df_inverted.P1 == draft[hero_index]) & (df_inverted.Match_Winner == "P2")].shape[0]
+            draft[HEADERS["Drafts"].index("Match_Wins")] = wins
+            draft[HEADERS["Drafts"].index("Match_Losses")] = losses
 
         ask_to_save = True
 
     if total == 0:
         update_status_bar(status=f"No Applicable Games found.")
-    elif changed == 1:
-        update_status_bar(status=f"Game_Winner updated for {changed} Game.")
     else:
-        update_status_bar(status=f"Game_Winner updated for {changed} Games.")
-    set_display("Matches",update_status=False,start_index=0,reset=True)
+        update_status_bar(status=f"Game_Winner updated for {changed} Game{'' if changed == 1 else 's'}.")
+    set_display("Matches",update_status=False,reset=True)
 def ask_for_winner(ga_list,p1,p2,n,total):
     # List of game actions (Strings)
     # String = P1
@@ -4909,7 +4865,7 @@ def remove_record(ignore):
                         break
 
     ask_to_save = True
-    set_display(display,update_status=False,start_index=0,reset=True)
+    set_display(display,update_status=False,reset=True)
     if display == "Matches":
         if len(selected) == 1:
             update_status_bar(f"Removed {counts[0]} Match, {counts[1]} Games, and {counts[2]} Plays from Database.")
@@ -5076,7 +5032,7 @@ def get_associated_draftid(mode):
             update_status_bar(f"Draft_ID applied to {count} Match.")
         else:
             update_status_bar(f"Draft_ID applied to {count} Matches.")
-        set_display("Matches",update_status=False,start_index=0,reset=True)
+        set_display("Matches",update_status=False,reset=True)
     else:
         update_status_bar(f"No Matches with Applicable Draft_IDs found.")
 def get_associated_draftid_pre():
@@ -5299,15 +5255,15 @@ bottom_frame.grid_columnconfigure(0,weight=1)
 
 # START buttons on the left side of the gui 
 match_button = tk.Button(left_frame,text="Matches",state=tk.DISABLED,
-    command=lambda : set_display("Matches",update_status=True,start_index=0,reset=True))
+    command=lambda : set_display("Matches",update_status=True,reset=True))
 game_button = tk.Button(left_frame,text="Games",state=tk.DISABLED,
-    command=lambda : set_display("Games",update_status=True,start_index=0,reset=True))
+    command=lambda : set_display("Games",update_status=True,reset=True))
 play_button = tk.Button(left_frame,text="Plays",state=tk.DISABLED,
-    command=lambda : set_display("Plays",update_status=True,start_index=0,reset=True))
+    command=lambda : set_display("Plays",update_status=True,reset=True))
 draft_button = tk.Button(left_frame,text="Drafts",state=tk.DISABLED,
-    command=lambda : set_display("Drafts",update_status=True,start_index=0,reset=True))
+    command=lambda : set_display("Drafts",update_status=True,reset=True))
 pick_button = tk.Button(left_frame,text="Draft Picks",state=tk.DISABLED,
-    command=lambda : set_display("Picks",update_status=True,start_index=0,reset=True))
+    command=lambda : set_display("Picks",update_status=True,reset=True))
 stats_button = tk.Button(left_frame,text="Statistics",state=tk.DISABLED,
     command=lambda : get_stats())
 filter_button = tk.Button(left_frame,text="Filter",state=tk.DISABLED,
@@ -5438,8 +5394,8 @@ s.configure("Treeview",
             background='white',
             fieldbackground='white')
 s.map("Treeview",
-      background=[("selected","#4a6984")],
-      foreground=[("selected","#ffffff")])
+    background=[("selected","#4a6984")],
+    foreground=[("selected","#ffffff")])
 
 startup()
 window.protocol("WM_DELETE_WINDOW", lambda : exit_select())
