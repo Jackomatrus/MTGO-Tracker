@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Literal, Union
 from MODO_DATA import (GAME_HEADER, LIMITED_FORMATS, PLAYS_HEADER, 
     MATCHES_HEADER, CARD_PATTERN)
 import re
@@ -150,7 +150,10 @@ class AllData(list):
             super(AllData, self).__init__([[],[],[],{}])
         else:
             super(AllData, self).__init__(*args)
-    matches = property_factory(0)
-    games = property_factory(1)
-    plays = property_factory(2)
-    raw_game_data = property_factory(3)
+    matches: list[MatchData] = property_factory(0)
+    games: list[GameData] = property_factory(1)
+    plays: list[PlayData] = property_factory(2)
+    raw_game_data: dict[str, list[str]] = property_factory(3)
+
+    def get_match(self, match_id: str) -> Union[MatchData, None]:
+        return next(x for x in self.matches if x.Match_ID == match_id)
