@@ -2913,7 +2913,36 @@ def ask_for_winner(ga_list,p1,p2,n,total):
     
     gw.protocol("WM_DELETE_WINDOW", lambda : close_gw_window("Exit."))    
     gw.wait_window() 
- 
+
+def dataframe_into_tree(tree: ttk.Treeview, df: pd.DataFrame, 
+                        cols: Union[None, list[str]] = None) -> None:
+    if cols:
+        df = df[cols]
+    tree.tag_configure("win",background="#a3ffb1")
+    tree.tag_configure("lose",background="#ffa3a3")
+    tree.tag_configure("na",background="#cccccc")
+    tree.delete(*tree.get_children())
+    tree['columns'] = cols
+
+    for col_name in cols:
+        tree.column(col_name, minwidth=20,stretch=True,width=20,anchor="center")
+        tree.heading(col_name, text=col_name)
+
+    for index, row in df.iterrows():
+        if index == 30:
+            break
+        tag = ('na',)
+        if 'Win' in row['Match Result']:
+            tag = ('win',)
+        elif 'Loss' in row['Match Result']:
+            tag = ('lose',)
+        tree.insert("",0,text=index,values=list(row), tags= tag)
+
+def suppress_cursor(event: tk.Event) -> Literal[None, 'break']:
+        x, y, widget = event.x, event.y, event.widget
+        if widget.identify_region(x, y) in ('separator', 'heading'):
+            return 'break'
+
 def get_stats():
     width =  1350
     height = 750
@@ -2984,25 +3013,21 @@ def get_stats():
     def defocus(event: tk.Event):
         event.widget.selection_clear()
 
-    def match_history(hero: str,opp,format_filter,limited_format,deck,opp_deck,date_range,s_type):
+    def match_history(hero, opp, format_filter, limited_format, deck, opp_deck, date_range, s_type):
         stats_window.title("Statistics - Match History: " + hero)
         clear_frames()
-        def skip(event: tk.Event) -> Literal[None, 'break']:
-            x, y, widget = event.x, event.y, event.widget
-            if widget.identify_region(x, y) in ('separator', 'heading'):
-                return 'break'
-
+        
         def unselect(event: tk.Event) -> Literal[None, 'break']:
             if event.widget.identify_region(event.x, event.y) != 'cell':
                 event.widget.selection_set(())
-            return skip(event)
+            return suppress_cursor(event)
 
         def tree_setup(tree: ttk.Treeview) -> None:
             tree.place(relheight=1, relwidth=1)
             tree.bind("<Button-1>",unselect)
-            tree.bind("<Enter>",skip)
+            tree.bind("<Enter>",suppress_cursor)
             tree.bind("<ButtonRelease-1>",unselect)
-            tree.bind("<Motion>",skip)
+            tree.bind("<Motion>",suppress_cursor)
         tree1 = ttk.Treeview(mid_frame9,show="headings",padding=10)
         tree2 = ttk.Treeview(mid_frame10,show="headings",padding=10)
         tree_setup(tree1)
@@ -3020,125 +3045,40 @@ def get_stats():
 
         mid_frame9.grid_propagate(0)
         mid_frame10.grid_propagate(0)
-
-        df_matches_p1hero = df_matches_inverted[(df_matches_inverted.P1 == hero)]
-        df_matches_p1hero.sort_values(by="Date",ascending=False,inplace=True)
-        tree1_dates    = df_matches_p1hero.Date.tolist()
-        tree1_decks    = df_matches_p1hero.P1_Subarch.tolist()
-        tree1_opp      = df_matches_p1hero.P2.tolist()
-        tree1_oppdecks = df_matches_p1hero.P2_Subarch.tolist()
-        tree1_wins     = df_matches_p1hero.P1_Wins.tolist()
-        tree1_losses   = df_matches_p1hero.P2_Wins.tolist()
-        tree1_result   = df_matches_p1hero.Match_Winner.tolist()
-        tree1_format   = df_matches_p1hero.Format.tolist()
-        tree1_lformat  = df_matches_p1hero.Limited_Format.tolist()
-        tree1_count = min(30, len(tree1_dates))
-        for index,i in enumerate(tree1_format):
-            if i in LIMITED_FORMATS:
-                tree1_format[index] += ": " + tree1_lformat[index]
-        for index,i in enumerate(tree1_result):
-            if i == "P1":
-                tree1_result[index] = "Win "
-            elif i == "P2":
-                tree1_result[index] = "Loss "
-            elif i == "NA":
-                tree1_result[index] = "NA "
-            tree1_result[index] += str(tree1_wins[index]) + "-" + str(tree1_losses[index])
-
-        df_matches_p1hero = df_matches_p1hero[(df_matches_p1hero.Format == format_filter)]
-        if limited_format != "All Limited Formats":
-            df_matches_p1hero = df_matches_p1hero[(df_matches_p1hero.Limited_Format == limited_format)]
-        tree2_dates    = df_matches_p1hero.Date.tolist()
-        tree2_decks    = df_matches_p1hero.P1_Subarch.tolist()
-        tree2_opp      = df_matches_p1hero.P2.tolist()
-        tree2_oppdecks = df_matches_p1hero.P2_Subarch.tolist()
-        tree2_wins     = df_matches_p1hero.P1_Wins.tolist()
-        tree2_losses   = df_matches_p1hero.P2_Wins.tolist()
-        tree2_result   = df_matches_p1hero.Match_Winner.tolist()
-        tree2_format   = df_matches_p1hero.Format.tolist()
-        tree2_lformat  = df_matches_p1hero.Limited_Format.tolist()
-        tree2_count = min(30, len(tree2_dates))
-        for index,i in enumerate(tree2_format):
-            if i in LIMITED_FORMATS:
-                tree2_format[index] += ": " + tree2_lformat[index]
-        for index,i in enumerate(tree2_result):
-            if i == "P1":
-                tree2_result[index] = "Win "
-            elif i == "P2":
-                tree2_result[index] = "Loss "
-            elif i == "NA":
-                tree2_result[index] = "NA "
-            tree2_result[index] += str(tree2_wins[index]) + "-" + str(tree2_losses[index])
-
-        mid_frame9["text"] = "Match History: " + hero
-        tree1.tag_configure("win",background="#a3ffb1")
-        tree1.tag_configure("lose",background="#ffa3a3")
-        tree1.tag_configure("na",background="#cccccc")
-        tree1.delete(*tree1.get_children())
-        tree1["column"] = ["Date","Opponent","Deck","Opp. Deck","Match Result","Format"]
-        for i in tree1["column"]:
-            tree1.column(i,minwidth=20,stretch=True,width=20,anchor="center")
-            tree1.heading(i,text=i)
-        tagged = False
-        for i in range(tree1_count):
-            if "Win" in tree1_result[i]:
-                tree1.insert("","end",values=[tree1_dates[i],
-                                              tree1_opp[i],
-                                              tree1_decks[i],
-                                              tree1_oppdecks[i],
-                                              tree1_result[i],
-                                              tree1_format[i]],tags=("win",))
-            elif "Loss" in tree1_result[i]:
-                tree1.insert("","end",values=[tree1_dates[i],
-                                              tree1_opp[i],
-                                              tree1_decks[i],
-                                              tree1_oppdecks[i],
-                                              tree1_result[i],
-                                              tree1_format[i]],tags=("lose",))
+        df_p1_hero = df_matches_inverted[(df_matches_inverted.P1 == hero)]
+        df_p1_hero.sort_values(by="Date",ascending=False,inplace=True)
+        def string_result(row: pd.Series) -> str:
+            result = 'NA'
+            if row['P1_Wins'] > row['P2_Wins']:
+                result = 'Win '
+            elif row['P1_Wins'] < row['P2_Wins']:
+                result = 'Loss '
+            return f"{result}{row['P1_Wins']}-{row['P2_Wins']}"
+        def include_limited_format(row: pd.Series) -> str:
+            if row['Format'] in LIMITED_FORMATS:
+                return f"{row['Format']}: {row['Limited_Format']}"
             else:
-                tree1.insert("","end",values=[tree1_dates[i],
-                                              tree1_opp[i],
-                                              tree1_decks[i],
-                                              tree1_oppdecks[i],
-                                              tree1_result[i],
-                                              tree1_format[i]],tags=("na",))
+                return row['Format']
+        df_p1_hero['Match Result'] = df_p1_hero.apply(string_result, axis=1)
+        df_p1_hero['Format'] = df_p1_hero.apply(include_limited_format, axis=1)
+        df_p1_hero.rename(inplace=True,
+            columns={'P2': 'Opponent', 'P1_Subarch': 'Deck', 
+                    'P2_Subarch': 'Opp. Deck'})
 
+
+        cols = ["Date","Opponent","Deck","Opp. Deck","Match Result","Format"]
+        dataframe_into_tree(tree1, df_p1_hero, cols)
+        if limited_format != "All Limited Formats":
+            df_p1_hero = df_p1_hero[(df_p1_hero.Limited_Format == limited_format)]
+        dataframe_into_tree(tree2, df_p1_hero[df_p1_hero.Format == format_filter], cols)
+
+        mid_frame9["text"] = f"Match History: {hero}"
         if format_filter == "All Formats":
             mid_frame10["text"] = "Choose a Format"
         elif (format_filter in LIMITED_FORMATS) & (limited_format != "All Limited Formats"):
-            mid_frame10["text"] = "Match History: " + hero + " - " + format_filter + ", " + limited_format
+            mid_frame10["text"] = f"Match History: {hero} - {format_filter}, {limited_format}"
         else:
-            mid_frame10["text"] = "Match History: " + hero + " - " + format_filter
-        tree2.tag_configure("win",background="#a3ffb1")
-        tree2.tag_configure("lose",background="#ffa3a3")
-        tree2.tag_configure("na",background="#cccccc")
-        tree2.delete(*tree2.get_children())
-        tree2["column"] = ["Date","Opponent","Deck","Opp. Deck","Match Result","Format"]
-        for i in tree2["column"]:
-            tree2.column(i,minwidth=20,stretch=True,width=20,anchor="center")
-            tree2.heading(i,text=i)
-        for i in range(tree2_count):
-            if "Win" in tree2_result[i]:
-                tree2.insert("","end",values=[tree2_dates[i],
-                                              tree2_opp[i],
-                                              tree2_decks[i],
-                                              tree2_oppdecks[i],
-                                              tree2_result[i],
-                                              tree2_format[i]],tags=("win",))
-            elif "Loss" in tree2_result[i]:
-                tree2.insert("","end",values=[tree2_dates[i],
-                                              tree2_opp[i],
-                                              tree2_decks[i],
-                                              tree2_oppdecks[i],
-                                              tree2_result[i],
-                                              tree2_format[i]],tags=("lose",))
-            else:
-                tree2.insert("","end",values=[tree2_dates[i],
-                                              tree2_opp[i],
-                                              tree2_decks[i],
-                                              tree2_oppdecks[i],
-                                              tree2_result[i],
-                                              tree2_format[i]],tags=("na",))
+            mid_frame10["text"] = f"Match History: {hero} - {format_filter}"
 
     def match_stats(hero,opp,mformat,lformat,deck,opp_deck,date_range,s_type):
         stats_window.title("Statistics - Match Data: " + hero)
@@ -3469,7 +3409,7 @@ def get_stats():
             else:
                 hero_mull_rate =round((i.P1_Mulls.sum()/total_n),2)
                 opp_mull_rate = round((i.P2_Mulls.sum()/total_n),2)
-                turn_rate =     round((i.Turns.sum()/total_n),2)     
+                turn_rate =     round((i.Turns.sum()/total_n),2)
             tree1data.append([wins,
                               losses,
                               win_rate,
