@@ -2966,50 +2966,26 @@ def get_stats():
     mid_frame.grid_columnconfigure(0,weight=1)
     mid_frame.grid_columnconfigure(1,weight=1)
     
-    df0 = pd.DataFrame(ALL_DATA[0],columns=HEADERS["Matches"])
-    df1 = pd.DataFrame(ALL_DATA[1],columns=HEADERS["Games"])
-    df2 = pd.DataFrame(ALL_DATA[2],columns=HEADERS["Plays"])
-    df0_i = pd.DataFrame(ALL_DATA_INVERTED[0],columns=HEADERS["Matches"])
-    df1_i = pd.DataFrame(ALL_DATA_INVERTED[1],columns=HEADERS["Games"])
-    df2_i = pd.DataFrame(ALL_DATA_INVERTED[2],columns=HEADERS["Plays"])
- 
+    df_matches = pd.DataFrame(ALL_DATA[0],columns=HEADERS["Matches"])
+    df_games = pd.DataFrame(ALL_DATA[1],columns=HEADERS["Games"])
+    df_plays = pd.DataFrame(ALL_DATA[2],columns=HEADERS["Plays"])
+    df_matches_inverted = pd.DataFrame(ALL_DATA_INVERTED[0],columns=HEADERS["Matches"])
+    df_games_inverted = pd.DataFrame(ALL_DATA_INVERTED[1],columns=HEADERS["Games"])
+    df_plays_inverted = pd.DataFrame(ALL_DATA_INVERTED[2],columns=HEADERS["Plays"])
+
     def clear_frames():
-        for widget in mid_frame1.winfo_children():
-            widget.destroy()
-        for widget in mid_frame2.winfo_children():
-            widget.destroy()
-        for widget in mid_frame3.winfo_children():
-            widget.destroy()
-        for widget in mid_frame4.winfo_children():
-            widget.destroy()
-        for widget in mid_frame5.winfo_children():
-            widget.destroy()  
-        for widget in mid_frame6.winfo_children():
-            widget.destroy()
-        for widget in mid_frame7.winfo_children():
-            widget.destroy()  
-        for widget in mid_frame8.winfo_children():
-            widget.destroy()
-        for widget in mid_frame9.winfo_children():
-            widget.destroy()  
-        for widget in mid_frame10.winfo_children():
-            widget.destroy()  
-        mid_frame1.grid_remove()
-        mid_frame2.grid_remove()
-        mid_frame3.grid_remove()
-        mid_frame4.grid_remove()
-        mid_frame5.grid_remove()
-        mid_frame6.grid_remove()
-        mid_frame7.grid_remove()
-        mid_frame8.grid_remove()
-        mid_frame9.grid_remove()
-        mid_frame10.grid_remove()
+        frames = [mid_frame1, mid_frame2, mid_frame3, mid_frame4, mid_frame5, 
+                mid_frame6, mid_frame7, mid_frame8, mid_frame9, mid_frame10]
+        for frame in frames:
+            for widget in frame.winfo_children():
+                widget.destroy()
+            frame.grid_remove()
 
     def defocus(event: tk.Event):
         event.widget.selection_clear()
 
-    def match_history(hero,opp,mformat,lformat,deck,opp_deck,date_range,s_type):
-        stats_window.title("Statistics - Card Data: " + hero)
+    def match_history(hero: str,opp,format_filter,limited_format,deck,opp_deck,date_range,s_type):
+        stats_window.title("Statistics - Match History: " + hero)
         clear_frames()
         def skip(event: tk.Event) -> Literal[None, 'break']:
             x, y, widget = event.x, event.y, event.widget
@@ -3027,7 +3003,6 @@ def get_stats():
             tree.bind("<Enter>",skip)
             tree.bind("<ButtonRelease-1>",unselect)
             tree.bind("<Motion>",skip)
-
         tree1 = ttk.Treeview(mid_frame9,show="headings",padding=10)
         tree2 = ttk.Treeview(mid_frame10,show="headings",padding=10)
         tree_setup(tree1)
@@ -3046,20 +3021,18 @@ def get_stats():
         mid_frame9.grid_propagate(0)
         mid_frame10.grid_propagate(0)
 
-        df0_i_f        = df0_i[(df0_i.P1 == hero)]
-        df0_i_f.sort_values(by="Date",ascending=False,inplace=True)
-        tree1_dates    = df0_i_f.Date.tolist()
-        tree1_decks    = df0_i_f.P1_Subarch.tolist()
-        tree1_opp      = df0_i_f.P2.tolist()
-        tree1_oppdecks = df0_i_f.P2_Subarch.tolist()
-        tree1_wins     = df0_i_f.P1_Wins.tolist()
-        tree1_losses   = df0_i_f.P2_Wins.tolist()
-        tree1_result   = df0_i_f.Match_Winner.tolist()
-        tree1_format   = df0_i_f.Format.tolist()
-        tree1_lformat  = df0_i_f.Limited_Format.tolist()
-        tree1_count = 30
-        if len(tree1_dates) < 30:
-            tree1_count = len(tree1_dates)
+        df_matches_p1hero = df_matches_inverted[(df_matches_inverted.P1 == hero)]
+        df_matches_p1hero.sort_values(by="Date",ascending=False,inplace=True)
+        tree1_dates    = df_matches_p1hero.Date.tolist()
+        tree1_decks    = df_matches_p1hero.P1_Subarch.tolist()
+        tree1_opp      = df_matches_p1hero.P2.tolist()
+        tree1_oppdecks = df_matches_p1hero.P2_Subarch.tolist()
+        tree1_wins     = df_matches_p1hero.P1_Wins.tolist()
+        tree1_losses   = df_matches_p1hero.P2_Wins.tolist()
+        tree1_result   = df_matches_p1hero.Match_Winner.tolist()
+        tree1_format   = df_matches_p1hero.Format.tolist()
+        tree1_lformat  = df_matches_p1hero.Limited_Format.tolist()
+        tree1_count = min(30, len(tree1_dates))
         for index,i in enumerate(tree1_format):
             if i in LIMITED_FORMATS:
                 tree1_format[index] += ": " + tree1_lformat[index]
@@ -3072,21 +3045,19 @@ def get_stats():
                 tree1_result[index] = "NA "
             tree1_result[index] += str(tree1_wins[index]) + "-" + str(tree1_losses[index])
 
-        df0_i_f = df0_i_f[(df0_i_f.Format == mformat)]
-        if lformat != "All Limited Formats":
-            df0_i_f = df0_i_f[(df0_i_f.Limited_Format == lformat)]
-        tree2_dates    = df0_i_f.Date.tolist()
-        tree2_decks    = df0_i_f.P1_Subarch.tolist()
-        tree2_opp      = df0_i_f.P2.tolist()
-        tree2_oppdecks = df0_i_f.P2_Subarch.tolist()
-        tree2_wins     = df0_i_f.P1_Wins.tolist()
-        tree2_losses   = df0_i_f.P2_Wins.tolist()
-        tree2_result   = df0_i_f.Match_Winner.tolist()
-        tree2_format   = df0_i_f.Format.tolist()
-        tree2_lformat  = df0_i_f.Limited_Format.tolist()
-        tree2_count = 30
-        if len(tree2_dates) < 30:
-            tree2_count = len(tree2_dates)
+        df_matches_p1hero = df_matches_p1hero[(df_matches_p1hero.Format == format_filter)]
+        if limited_format != "All Limited Formats":
+            df_matches_p1hero = df_matches_p1hero[(df_matches_p1hero.Limited_Format == limited_format)]
+        tree2_dates    = df_matches_p1hero.Date.tolist()
+        tree2_decks    = df_matches_p1hero.P1_Subarch.tolist()
+        tree2_opp      = df_matches_p1hero.P2.tolist()
+        tree2_oppdecks = df_matches_p1hero.P2_Subarch.tolist()
+        tree2_wins     = df_matches_p1hero.P1_Wins.tolist()
+        tree2_losses   = df_matches_p1hero.P2_Wins.tolist()
+        tree2_result   = df_matches_p1hero.Match_Winner.tolist()
+        tree2_format   = df_matches_p1hero.Format.tolist()
+        tree2_lformat  = df_matches_p1hero.Limited_Format.tolist()
+        tree2_count = min(30, len(tree2_dates))
         for index,i in enumerate(tree2_format):
             if i in LIMITED_FORMATS:
                 tree2_format[index] += ": " + tree2_lformat[index]
@@ -3132,12 +3103,12 @@ def get_stats():
                                               tree1_result[i],
                                               tree1_format[i]],tags=("na",))
 
-        if mformat == "All Formats":
+        if format_filter == "All Formats":
             mid_frame10["text"] = "Choose a Format"
-        elif (mformat in LIMITED_FORMATS) & (lformat != "All Limited Formats"):
-            mid_frame10["text"] = "Match History: " + hero + " - " + mformat + ", " + lformat
+        elif (format_filter in LIMITED_FORMATS) & (limited_format != "All Limited Formats"):
+            mid_frame10["text"] = "Match History: " + hero + " - " + format_filter + ", " + limited_format
         else:
-            mid_frame10["text"] = "Match History: " + hero + " - " + mformat
+            mid_frame10["text"] = "Match History: " + hero + " - " + format_filter
         tree2.tag_configure("win",background="#a3ffb1")
         tree2.tag_configure("lose",background="#ffa3a3")
         tree2.tag_configure("na",background="#cccccc")
@@ -3146,7 +3117,6 @@ def get_stats():
         for i in tree2["column"]:
             tree2.column(i,minwidth=20,stretch=True,width=20,anchor="center")
             tree2.heading(i,text=i)
-        tagged = False
         for i in range(tree2_count):
             if "Win" in tree2_result[i]:
                 tree2.insert("","end",values=[tree2_dates[i],
@@ -3199,7 +3169,7 @@ def get_stats():
         mid_frame3.grid(row=1,column=0,sticky="nsew")
         mid_frame4.grid(row=1,column=1,sticky="nsew")
 
-        df0_i_f = df0_i[(df0_i.P1 == hero)]
+        df0_i_f = df_matches_inverted[(df_matches_inverted.P1 == hero)]
         hero_n =  df0_i_f.shape[0] # Matches played by hero
         df0_i_f = df0_i_f[(df0_i_f.Date > date_range[0]) & (df0_i_f.Date < date_range[1])]
 
@@ -3249,11 +3219,11 @@ def get_stats():
             format_losses.append(mt_losses)
             format_wr.append(to_percent(mt_wins/(mt_wins+mt_losses),1) + "%")
 
-        roll_1_mean = round(df0["P1_Roll"].mean(),2)
-        roll_2_mean = round(df0["P2_Roll"].mean(),2)
-        p1_roll_wr =  to_percent((df0[df0.Roll_Winner == "P1"].shape[0])/df0.shape[0],1)
-        p2_roll_wr =  to_percent((df0[df0.Roll_Winner == "P2"].shape[0])/df0.shape[0],1)
-        rolls_won =   df0_i[(df0_i.P1 == hero) & (df0_i.Roll_Winner == "P1")].shape[0] 
+        roll_1_mean = round(df_matches["P1_Roll"].mean(),2)
+        roll_2_mean = round(df_matches["P2_Roll"].mean(),2)
+        p1_roll_wr =  to_percent((df_matches[df_matches.Roll_Winner == "P1"].shape[0])/df_matches.shape[0],1)
+        p2_roll_wr =  to_percent((df_matches[df_matches.Roll_Winner == "P2"].shape[0])/df_matches.shape[0],1)
+        rolls_won =   df_matches_inverted[(df_matches_inverted.P1 == hero) & (df_matches_inverted.Roll_Winner == "P1")].shape[0] 
         roll_labels = ["Roll 1 Mean","Roll 2 Mean","Roll 1 Win%","Roll 2 Win%","","Hero Roll Win%"]
         roll_values = [roll_1_mean,roll_2_mean,p1_roll_wr+"%",p2_roll_wr+"%","",to_percent(rolls_won/hero_n,1)+"%"]
 
@@ -3438,8 +3408,8 @@ def get_stats():
         mid_frame3.grid(row=1,column=0,sticky="nsew")
         mid_frame4.grid(row=1,column=1,sticky="nsew")
 
-        df1_i_merge     = pd.merge(df0_i,
-                                   df1_i,
+        df1_i_merge     = pd.merge(df_matches_inverted,
+                                   df_games_inverted,
                                    how="inner",
                                    left_on=["Match_ID","P1","P2"],
                                    right_on=["Match_ID","P1","P2"])
@@ -3653,13 +3623,13 @@ def get_stats():
         mid_frame3.grid(row=1,column=0,sticky="nsew")
         mid_frame4.grid(row=1,column=1,sticky="nsew")
 
-        df1_i_merge =   pd.merge(df0_i,
-                                 df1_i,
+        df1_i_merge =   pd.merge(df_matches_inverted,
+                                 df_games_inverted,
                                  how="inner",
                                  left_on=["Match_ID","P1","P2"],
                                  right_on=["Match_ID","P1","P2"])
-        df2_merge   =   pd.merge(df0,
-                                 df2,
+        df2_merge   =   pd.merge(df_matches,
+                                 df_plays,
                                  how="inner",
                                  left_on=["Match_ID"],
                                  right_on=["Match_ID"])
@@ -3730,8 +3700,8 @@ def get_stats():
                                total_actions])
             index_list2.append(["Turn "+str(i)])
 
-        df2_i_merge = pd.merge(df0_i,
-                               df2,
+        df2_i_merge = pd.merge(df_matches_inverted,
+                               df_plays,
                                how="inner",
                                left_on=["Match_ID"],
                                right_on=["Match_ID"])
@@ -3969,7 +3939,7 @@ def get_stats():
         mid_frame3.grid(row=1,column=0,sticky="nsew")
         mid_frame4.grid(row=1,column=1,sticky="nsew")
 
-        df0_i_f        = df0_i[(df0_i.P1 == hero) & (df0_i.P2 == opp)]
+        df0_i_f        = df_matches_inverted[(df_matches_inverted.P1 == hero) & (df_matches_inverted.P2 == opp)]
         df0_i_f.sort_values(by="Date",ascending=False,inplace=True)
         tree1_dates    = df0_i_f.Date.tolist()
         tree1_decks    = df0_i_f.P1_Subarch.tolist()
@@ -3986,8 +3956,8 @@ def get_stats():
                 tree1_result[index] = "NA "
             tree1_result[index] += str(tree1_wins[index]) + "-" + str(tree1_losses[index])
 
-        df1_i_merge     = pd.merge(df0_i,
-                                   df1_i,
+        df1_i_merge     = pd.merge(df_matches_inverted,
+                                   df_games_inverted,
                                    how="inner",
                                    left_on=["Match_ID","P1","P2"],
                                    right_on=["Match_ID","P1","P2"])
@@ -4253,7 +4223,7 @@ def get_stats():
 
         chart_type = "plusminus"
 
-        df_time = df0_i[(df0_i.P1 == hero)]
+        df_time = df_matches_inverted[(df_matches_inverted.P1 == hero)]
         if mformat != "All Formats":
             df_time = df_time[(df_time.Format == mformat)]
         if lformat != "All Limited Formats":
@@ -4382,12 +4352,12 @@ def get_stats():
         mid_frame8.grid_propagate(0)
 
         # Use Left Join because we want to keep Games where 0 Plays occurred.
-        df_merge = pd.merge(df1_i,
-                            df2_i,
+        df_merge = pd.merge(df_games_inverted,
+                            df_plays_inverted,
                             how="left",
                             left_on=["Match_ID","Game_Num"],
                             right_on=["Match_ID","Game_Num"])
-        df_merge = pd.merge(df0_i,
+        df_merge = pd.merge(df_matches_inverted,
                             df_merge,
                             how="inner",
                             left_on=["Match_ID","P1","P2"],
@@ -4518,7 +4488,7 @@ def get_stats():
             return str(round(fl*100,n))
 
     def update_format_menu(*argv):
-        format_options = df0_i[(df0_i.P1 == player.get())].Format.value_counts().keys().tolist()
+        format_options = df_matches_inverted[(df_matches_inverted.P1 == player.get())].Format.value_counts().keys().tolist()
         format_options.insert(0,"All Formats")
 
         format_dropdown["values"] = format_options
@@ -4537,7 +4507,7 @@ def get_stats():
         stat_type_select["state"]   = tk.NORMAL
 
     def update_opp_menu(*argv):
-        df = df0_i[(df0_i.P1 == player.get())]
+        df = df_matches_inverted[(df_matches_inverted.P1 == player.get())]
 
         opponents = df.P2.value_counts().keys().tolist()
         opponents.sort(reverse=False,key=str.casefold)
@@ -4565,7 +4535,7 @@ def get_stats():
         update_opp_deck_menu()
 
     def update_lim_menu(*argv):
-        lim_formats_played = df0_i[(df0_i.P1 == player.get()) & (df0_i.Format == mformat.get())].Limited_Format.value_counts().keys().tolist()
+        lim_formats_played = df_matches_inverted[(df_matches_inverted.P1 == player.get()) & (df_matches_inverted.Format == mformat.get())].Limited_Format.value_counts().keys().tolist()
         lim_formats_played.insert(0,"All Limited Formats")
 
         limited_dropdown["values"] = lim_formats_played
@@ -4573,19 +4543,19 @@ def get_stats():
 
     def update_deck_menu(*argv):
         if mformat.get() == "All Formats":
-            df = df0_i[(df0_i.P1 == player.get())]
+            df = df_matches_inverted[(df_matches_inverted.P1 == player.get())]
         elif mformat.get() in INPUT_OPTIONS["Constructed Formats"]:
-            df = df0_i[(df0_i.P1 == player.get()) & (df0_i.Format == mformat.get())]
+            df = df_matches_inverted[(df_matches_inverted.P1 == player.get()) & (df_matches_inverted.Format == mformat.get())]
         elif (mformat.get() in INPUT_OPTIONS["Limited Formats"]) & (lim_format.get() == "All Limited Formats"):
-            df = df0_i[(df0_i.P1 == player.get()) & (df0_i.Format == mformat.get())]
+            df = df_matches_inverted[(df_matches_inverted.P1 == player.get()) & (df_matches_inverted.Format == mformat.get())]
         elif (mformat.get() in INPUT_OPTIONS["Limited Formats"]) & (lim_format.get() != "All Limited Formats"):
-            df = df0_i[(df0_i.P1 == player.get()) & (df0_i.Format == mformat.get()) & (df0_i.Limited_Format == lim_format.get())]
+            df = df_matches_inverted[(df_matches_inverted.P1 == player.get()) & (df_matches_inverted.Format == mformat.get()) & (df_matches_inverted.Limited_Format == lim_format.get())]
         else:
-            df = df0_i[(df0_i.P1 == player.get()) & (df0_i.Format == mformat.get())]
+            df = df_matches_inverted[(df_matches_inverted.P1 == player.get()) & (df_matches_inverted.Format == mformat.get())]
         
         decks_played = df.P1_Subarch.value_counts().keys().tolist()
         if s_type.get() == "Time Data":
-            deck_counts  = df0_i[(df0_i.P1 == player.get())].P1_Subarch.value_counts().tolist()
+            deck_counts  = df_matches_inverted[(df_matches_inverted.P1 == player.get())].P1_Subarch.value_counts().tolist()
             for index,i in enumerate(deck_counts):
                 if i < 20:
                     del decks_played[index:]
@@ -4598,15 +4568,15 @@ def get_stats():
 
     def update_opp_deck_menu(*argv):
         if mformat.get() == "All Formats":
-            df = df0_i[(df0_i.P1 == player.get())]
+            df = df_matches_inverted[(df_matches_inverted.P1 == player.get())]
         elif mformat.get() in INPUT_OPTIONS["Constructed Formats"]:
-            df = df0_i[(df0_i.P1 == player.get()) & (df0_i.Format == mformat.get())]
+            df = df_matches_inverted[(df_matches_inverted.P1 == player.get()) & (df_matches_inverted.Format == mformat.get())]
         elif (mformat.get() in INPUT_OPTIONS["Limited Formats"]) & (lim_format.get() == "All Limited Formats"):
-            df = df0_i[(df0_i.P1 == player.get()) & (df0_i.Format == mformat.get())]
+            df = df_matches_inverted[(df_matches_inverted.P1 == player.get()) & (df_matches_inverted.Format == mformat.get())]
         elif (mformat.get() in INPUT_OPTIONS["Limited Formats"]) & (lim_format.get() != "All Limited Formats"):
-            df = df0_i[(df0_i.P1 == player.get()) & (df0_i.Format == mformat.get()) & (df0_i.Limited_Format == lim_format.get())]
+            df = df_matches_inverted[(df_matches_inverted.P1 == player.get()) & (df_matches_inverted.Format == mformat.get()) & (df_matches_inverted.Limited_Format == lim_format.get())]
         else:
-            df = df0_i[(df0_i.P1 == player.get()) & (df0_i.Format == mformat.get())]
+            df = df_matches_inverted[(df_matches_inverted.P1 == player.get()) & (df_matches_inverted.Format == mformat.get())]
 
         opp_decks_played = df.P2_Subarch.value_counts().keys().tolist()
         opp_decks_played.insert(0,"All Opp. Decks")
@@ -4674,10 +4644,10 @@ def get_stats():
         window.deiconify()
         stats_window.destroy()
         
-    p1_options = df0_i.P1.tolist()
+    p1_options = df_matches_inverted.P1.tolist()
     p1_options = sorted(list(set(p1_options)),key=str.casefold)
     
-    date_min = df0.Date.min()
+    date_min = df_matches.Date.min()
     today = datetime.date.today()
 
     format_options = [""]
