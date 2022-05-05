@@ -121,7 +121,7 @@ def players(game_log: Union[str, list[str]]) -> list[str]:
     Returns:
         list[str]: all player names
     """
-
+    #TODO implement fix for single player game
     if isinstance(game_log, str):
         player_name_re = re.compile( r'@P@P(.+?) joined the game\.')
         # alternative: r'@P(?!.*?@P.{0,30} join)(.+?) joined the game\.'
@@ -131,7 +131,7 @@ def players(game_log: Union[str, list[str]]) -> list[str]:
     else:
         raise TypeError(f"Expected log as list of strings or string,"
                         f"got {type(game_log)}")
-    # remove duplicates
+    # remove duplicates 
     players = list(set(player_name_re.findall(game_log)))
     players.sort(key=len, reverse=True) # not sure why sorting
     return players
@@ -482,10 +482,7 @@ def game_data(
     all_parsed_games = []
     all_games_ga = {}
     game_num = 0
-    try:
-        p1, p2 = match_actions.players[0:2]
-    except ValueError:
-        return "Players not Found."
+    p1, p2 = match_actions.players[0:2]
     game = GameData()
     game.P1 = alter(p1,original=True)
     game.P2 = alter(p2,original=True)
@@ -644,7 +641,7 @@ def get_all_data(
     game_log: str, file_last_modified: struct_time
     ) ->tuple[
         MatchData, 
-        list[list[Union[str, int]]], 
+        list[GameData], 
         list[PlayData], 
         dict[str, list[str]], 
         tuple[bool, Union[str, Literal[None]]]]:
