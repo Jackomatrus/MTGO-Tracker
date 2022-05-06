@@ -1,5 +1,5 @@
 import tkinter as tk
-from typing import Union, Literal
+from typing import Union, Literal, Callable
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -53,7 +53,7 @@ test_mode =         False
 filter_dict =       {}
 display =           ""
 prev_display =      ""
-uaw =               "NA"
+user_entered_winner =               "NA"
 field =             ""
 data_loaded =       False
 filter_changed =    False
@@ -212,7 +212,7 @@ def clear_loaded():
     global data_loaded
     global filter_changed
     global prev_display
-    global uaw
+    global user_entered_winner
     global ask_to_save
 
     ALL_DATA = AllData()
@@ -225,7 +225,7 @@ def clear_loaded():
     filter_dict.clear()
     display =           ""
     prev_display =      ""
-    uaw =               "NA"
+    user_entered_winner =               "NA"
     data_loaded =       False
     filter_changed =    False
     ask_to_save =       False
@@ -2802,7 +2802,7 @@ def get_winners():
     global ALL_DATA
     global ALL_DATA_INVERTED
     global DRAFTS_TABLE
-    global uaw
+    global user_entered_winner
     global ask_to_save
 
     changed = 0
@@ -2818,13 +2818,13 @@ def get_winners():
                 if (game.Match_ID == match_id) & (str(game.Game_Num) == game_num) & (game.Game_Winner == "NA"):
                     ask_for_winner(ALL_DATA.raw_game_data[key],game.P1,game.P2,count+1,len(ALL_DATA.raw_game_data))
                     total += 1
-                    if uaw == "Exit.":
+                    if user_entered_winner == "Exit.":
                         exit = True
                         raw_dict_new[key] = ALL_DATA.raw_game_data[key]
-                    elif uaw == "NA":
+                    elif user_entered_winner == "NA":
                         raw_dict_new[key] = ALL_DATA.raw_game_data[key]
                     else:
-                        game.Game_Winner = uaw
+                        game.Game_Winner = user_entered_winner
                         changed += 1
                     break
         if exit:
@@ -2858,8 +2858,8 @@ def ask_for_winner(ga_list,p1,p2,n,total):
     # Int = Total number of games missing Game_Winner
 
     def close_gw_window(winner):
-        global uaw
-        uaw = winner
+        global user_entered_winner
+        user_entered_winner = winner
         gw.grab_release()
         gw.destroy()
         
@@ -2915,12 +2915,17 @@ def ask_for_winner(ga_list,p1,p2,n,total):
     gw.wait_window() 
 
 def dataframe_into_tree(tree: ttk.Treeview, df: pd.DataFrame, 
-                        cols: Union[None, list[str]] = None) -> None:
+        cols: Union[None, list[str]]=None, 
+        tag_factory: Callable[[pd.Series],tuple[str]]=lambda x: None) -> None:
     if cols:
         df = df[cols]
+    else:
+        cols = df.columns.tolist()
+    df = df.reset_index()
     tree.tag_configure("win",background="#a3ffb1")
     tree.tag_configure("lose",background="#ffa3a3")
     tree.tag_configure("na",background="#cccccc")
+    tree.tag_configure("colored",background="#cccccc")
     tree.delete(*tree.get_children())
     tree['columns'] = cols
 
@@ -2931,17 +2936,33 @@ def dataframe_into_tree(tree: ttk.Treeview, df: pd.DataFrame,
     for index, row in df.iterrows():
         if index == 30:
             break
-        tag = ('na',)
-        if 'Win' in row['Match Result']:
-            tag = ('win',)
-        elif 'Loss' in row['Match Result']:
-            tag = ('lose',)
-        tree.insert("",0,text=index,values=list(row), tags= tag)
+        tree.insert("", 0, text=index, values=list(row)[1:], tags=tag_factory(row))
 
 def suppress_cursor(event: tk.Event) -> Literal[None, 'break']:
         x, y, widget = event.x, event.y, event.widget
         if widget.identify_region(x, y) in ('separator', 'heading'):
             return 'break'
+
+def filter_df(df: pd.DataFrame, hero: str=None, opp: str='Opponent',
+    format_filter: str="All Formats", limited_format: str="All Limited Formats",
+    deck: str="All Decks", opp_deck: str="All Opp. Decks",
+    date_range: tuple=None, s_type=None) -> pd.DataFrame:
+    if hero:
+        df = df[df.P1 == hero]
+    if opp!= 'Opponent':
+        df = df[df.P2 == opp]
+    if format_filter != "All Formats":
+        df = df[df.Format == format_filter]
+    if limited_format != "All Limited Formats":
+        df = df[df.Limited_Format == limited_format]
+    if deck != "All Decks":
+        df = df[df.P1_Subarch == deck]
+    if opp_deck != 'All Opp. Decks':
+        df = df[df.P2_Subarch == opp_deck]
+    if date_range:
+        df = df[(df.Date > date_range[0]) & (df.Date < date_range[1])]
+    return df
+
 
 def get_stats():
     width =  1350
@@ -3045,8 +3066,9 @@ def get_stats():
 
         mid_frame9.grid_propagate(0)
         mid_frame10.grid_propagate(0)
-        df_p1_hero = df_matches_inverted[(df_matches_inverted.P1 == hero)]
-        df_p1_hero.sort_values(by="Date",ascending=False,inplace=True)
+        df_p1_hero = filter_df(df_matches_inverted, hero=hero)
+        filtered_df = filter_df(df_matches_inverted, hero, opp, 
+            format_filter, limited_format, deck, opp_deck, date_range, s_type)
         def string_result(row: pd.Series) -> str:
             result = 'NA'
             if row['P1_Wins'] > row['P2_Wins']:
@@ -3059,18 +3081,25 @@ def get_stats():
                 return f"{row['Format']}: {row['Limited_Format']}"
             else:
                 return row['Format']
-        df_p1_hero['Match Result'] = df_p1_hero.apply(string_result, axis=1)
-        df_p1_hero['Format'] = df_p1_hero.apply(include_limited_format, axis=1)
-        df_p1_hero.rename(inplace=True,
-            columns={'P2': 'Opponent', 'P1_Subarch': 'Deck', 
-                    'P2_Subarch': 'Opp. Deck'})
-
-
+        def prettify_df(df: pd.DataFrame):
+            df.sort_values(by="Date",ascending=False,inplace=True)
+            df['Match Result'] = df.apply(string_result, axis=1)
+            df['Format'] = df.apply(include_limited_format, axis=1)
+            display_names = ['Opponent', 'Deck', 'Opp. Deck']
+            real_col_names = ['P2', 'P1_Subarch', 'P2_Subarch']
+            df[display_names] = df[real_col_names]
+        prettify_df(df_p1_hero)
+        prettify_df(filtered_df)
         cols = ["Date","Opponent","Deck","Opp. Deck","Match Result","Format"]
-        dataframe_into_tree(tree1, df_p1_hero, cols)
-        if limited_format != "All Limited Formats":
-            df_p1_hero = df_p1_hero[(df_p1_hero.Limited_Format == limited_format)]
-        dataframe_into_tree(tree2, df_p1_hero[df_p1_hero.Format == format_filter], cols)
+        def match_hist_tag_factory(row: pd.Series) -> tuple(str):
+            if 'Win' in row['Match Result']:
+                return ('win',)
+            elif 'Loss' in row['Match Result']:
+                return ('lose',)
+            else:
+                return ('na',)
+        dataframe_into_tree(tree1, df_p1_hero, cols, match_hist_tag_factory)
+        dataframe_into_tree(tree2, filtered_df, cols, match_hist_tag_factory)
 
         mid_frame9["text"] = f"Match History: {hero}"
         if format_filter == "All Formats":
@@ -3080,26 +3109,21 @@ def get_stats():
         else:
             mid_frame10["text"] = f"Match History: {hero} - {format_filter}"
 
-    def match_stats(hero,opp,mformat,lformat,deck,opp_deck,date_range,s_type):
-        stats_window.title("Statistics - Match Data: " + hero)
+    def match_stats(hero,opp,mformat,lformat,deck,opp_deck,date_range, s_type):
+        stats_window.title(f"Statistics - Match Data: {hero}")
         clear_frames()
-        def tree_skip(event):
-            if tree1.identify_region(event.x,event.y) == "separator":
-                return "break"
-            if tree1.identify_region(event.x,event.y) == "heading":
-                return "break"
-        def tree_setup(*argv):
-            for i in argv:
-                i.place(relheight=1, relwidth=1)
-                i.bind("<Button-1>",tree_skip)
-                i.bind("<Enter>",tree_skip)
-                i.bind("<ButtonRelease-1>",tree_skip)
-                i.bind("<Motion>",tree_skip)          
+        def tree_setup(tree: ttk.Treeview):
+            tree.place(relheight=1, relwidth=1)
+            tree.bind("<Button-1>",suppress_cursor)
+            tree.bind("<Enter>",suppress_cursor)
+            tree.bind("<ButtonRelease-1>",suppress_cursor)
+            tree.bind("<Motion>",suppress_cursor)
         tree1 = ttk.Treeview(mid_frame1,show="headings",selectmode="none",padding=10)
         tree2 = ttk.Treeview(mid_frame2,show="headings",selectmode="none",padding=10)
-        tree3 = ttk.Treeview(mid_frame3,show="headings",selectmode="none",padding=10)       
+        tree3 = ttk.Treeview(mid_frame3,show="headings",selectmode="none",padding=10)
         tree4 = ttk.Treeview(mid_frame4,show="headings",selectmode="none",padding=10)
-        tree_setup(tree1,tree2,tree3,tree4)
+        for tree in (tree1, tree2, tree3, tree4):
+            tree_setup(tree)
         mid_frame.grid_rowconfigure(0,weight=1)
         mid_frame.grid_rowconfigure(1,weight=1)
         mid_frame.grid_columnconfigure(0,weight=1)
@@ -3109,33 +3133,33 @@ def get_stats():
         mid_frame3.grid(row=1,column=0,sticky="nsew")
         mid_frame4.grid(row=1,column=1,sticky="nsew")
 
-        df0_i_f = df_matches_inverted[(df_matches_inverted.P1 == hero)]
-        hero_n =  df0_i_f.shape[0] # Matches played by hero
-        df0_i_f = df0_i_f[(df0_i_f.Date > date_range[0]) & (df0_i_f.Date < date_range[1])]
+        df_p1_hero = filter_df(df_matches_inverted, hero=hero)
+        hero_total_matches =  df_p1_hero.shape[0] #  Matches played by hero
+        df_p1_hero = filter_df(df_p1_hero, date_range=date_range)
 
         if mformat in INPUT_OPTIONS["Limited Formats"]:
-            formats_played = df0_i_f[(df0_i_f.Format == mformat)].Limited_Format.value_counts().keys().tolist()
-        elif mformat != "All Formats":
+            formats_played = filter_df(df_p1_hero, format_filter=mformat).Limited_Format.unique().tolist()
+        elif mformat == "All Formats":
+            formats_played = df_p1_hero.Format.unique().tolist()
+        else: #  any selected constructed format
             formats_played = [mformat]
-        else:
-            formats_played = df0_i_f.Format.value_counts().keys().tolist()
-        format_wins =    [df0_i_f[(df0_i_f.Match_Winner == "P1")].shape[0]] #adding overall in L[0]
-        format_losses =  [df0_i_f[(df0_i_f.Match_Winner == "P2")].shape[0]] #adding overall in L[0]
+        format_wins =    [df_p1_hero[(df_p1_hero.Match_Winner == "P1")].shape[0]] #adding overall in L[0]
+        format_losses =  [df_p1_hero[(df_p1_hero.Match_Winner == "P2")].shape[0]] #adding overall in L[0]
         if (format_wins[0] + format_losses[0]) == 0:
             format_wr = ["0.0%"]
         else:
-            format_wr = [to_percent(format_wins[0]/(format_wins[0]+format_losses[0]),1) + "%"]    #adding overall in L[0]
+            format_wr = [to_percent(format_wins[0]/(format_wins[0]+format_losses[0]),1)]    #adding overall in L[0]
 
-        for i in formats_played:
+        for mtg_format in formats_played:
             if mformat in INPUT_OPTIONS["Limited Formats"]:
-                wins  =  df0_i_f[(df0_i_f.Limited_Format == i) & (df0_i_f.Match_Winner == "P1")].shape[0]
-                losses = df0_i_f[(df0_i_f.Limited_Format == i) & (df0_i_f.Match_Winner == "P2")].shape[0]
+                wins  =  df_p1_hero[(df_p1_hero.Limited_Format == mtg_format) & (df_p1_hero.Match_Winner == "P1")].shape[0]
+                losses = df_p1_hero[(df_p1_hero.Limited_Format == mtg_format) & (df_p1_hero.Match_Winner == "P2")].shape[0]
             else:
-                wins  =  df0_i_f[(df0_i_f.Format == i) & (df0_i_f.Match_Winner == "P1")].shape[0]
-                losses = df0_i_f[(df0_i_f.Format == i) & (df0_i_f.Match_Winner == "P2")].shape[0]
+                wins  =  df_p1_hero[(df_p1_hero.Format == mtg_format) & (df_p1_hero.Match_Winner == "P1")].shape[0]
+                losses = df_p1_hero[(df_p1_hero.Format == mtg_format) & (df_p1_hero.Match_Winner == "P2")].shape[0]
             format_wins.append(str(wins))
             format_losses.append(str(losses))
-            format_wr.append(to_percent(wins/(wins+losses),1) + "%")
+            format_wr.append(to_percent(wins/(wins+losses),1))
         formats_played.insert(0,"Match Format")
 
         formats_played.extend(["","Match Type"])
@@ -3144,104 +3168,92 @@ def get_stats():
         format_wr.extend(["",format_wr[0]])
 
         if mformat != "All Formats":
-            matchtypes_played = df0_i_f[(df0_i_f.Format == mformat)].Match_Type.value_counts().keys().tolist()
+            matchtypes_played = df_p1_hero[(df_p1_hero.Format == mformat)].Match_Type.unique().tolist()
         else:
-            matchtypes_played = df0_i_f.Match_Type.value_counts().keys().tolist()
-        for i in matchtypes_played:
+            matchtypes_played = df_p1_hero.Match_Type.unique().tolist()
+        for index in matchtypes_played:
             if mformat != "All Formats":
-                mt_wins  =  df0_i_f[(df0_i_f.Format == mformat) & (df0_i_f.Match_Type == i) & (df0_i_f.Match_Winner == "P1")].shape[0]
-                mt_losses = df0_i_f[(df0_i_f.Format == mformat) & (df0_i_f.Match_Type == i) & (df0_i_f.Match_Winner == "P2")].shape[0]
+                mt_wins  =  df_p1_hero[(df_p1_hero.Format == mformat) & (df_p1_hero.Match_Type == index) & (df_p1_hero.Match_Winner == "P1")].shape[0]
+                mt_losses = df_p1_hero[(df_p1_hero.Format == mformat) & (df_p1_hero.Match_Type == index) & (df_p1_hero.Match_Winner == "P2")].shape[0]
             else:
-                mt_wins  =  df0_i_f[(df0_i_f.Match_Type == i) & (df0_i_f.Match_Winner == "P1")].shape[0]
-                mt_losses = df0_i_f[(df0_i_f.Match_Type == i) & (df0_i_f.Match_Winner == "P2")].shape[0]
-            formats_played.append(i)
+                mt_wins  =  df_p1_hero[(df_p1_hero.Match_Type == index) & (df_p1_hero.Match_Winner == "P1")].shape[0]
+                mt_losses = df_p1_hero[(df_p1_hero.Match_Type == index) & (df_p1_hero.Match_Winner == "P2")].shape[0]
+            formats_played.append(index)
             format_wins.append(mt_wins)
             format_losses.append(mt_losses)
-            format_wr.append(to_percent(mt_wins/(mt_wins+mt_losses),1) + "%")
+            format_wr.append(to_percent(mt_wins/(mt_wins+mt_losses),1))
 
         roll_1_mean = round(df_matches["P1_Roll"].mean(),2)
         roll_2_mean = round(df_matches["P2_Roll"].mean(),2)
         p1_roll_wr =  to_percent((df_matches[df_matches.Roll_Winner == "P1"].shape[0])/df_matches.shape[0],1)
         p2_roll_wr =  to_percent((df_matches[df_matches.Roll_Winner == "P2"].shape[0])/df_matches.shape[0],1)
-        rolls_won =   df_matches_inverted[(df_matches_inverted.P1 == hero) & (df_matches_inverted.Roll_Winner == "P1")].shape[0] 
+        rolls_won = df_matches_inverted[(df_matches_inverted.P1 == hero) & (df_matches_inverted.Roll_Winner == "P1")].shape[0] 
         roll_labels = ["Roll 1 Mean","Roll 2 Mean","Roll 1 Win%","Roll 2 Win%","","Hero Roll Win%"]
-        roll_values = [roll_1_mean,roll_2_mean,p1_roll_wr+"%",p2_roll_wr+"%","",to_percent(rolls_won/hero_n,1)+"%"]
+        roll_values = [roll_1_mean,roll_2_mean,p1_roll_wr,p2_roll_wr,"",to_percent(rolls_won/hero_total_matches,1)]
+        roll_df = pd.DataFrame(zip(roll_labels, roll_values), columns = ['Description', 'Value'])
+        def roll_tag_factory(row: pd.Series) -> tuple(str):
+            if row.name % 2:
+                return tuple()
+            else:
+                return ('colored',)
+        mid_frame1["text"] = "Die Rolls"
+        tree1.tag_configure("colored",background="#cccccc")
+        dataframe_into_tree(tree1, roll_df, tag_factory=roll_tag_factory)
+        tree1.column(1,anchor="center")
 
-        if mformat != "All Formats":
-            df0_i_f = df0_i_f[(df0_i_f.Format == mformat)]
-        if lformat != "All Limited Formats":
-            df0_i_f = df0_i_f[(df0_i_f.Limited_Format == lformat)]
-        if deck != "All Decks":
-            df0_i_f = df0_i_f[(df0_i_f.P1_Subarch == deck)]
-        if opp_deck != "All Opp. Decks":
-            df0_i_f = df0_i_f[(df0_i_f.P2_Subarch == opp_deck)]
+        df_p1_hero = filter_df(df_p1_hero, format_filter=mformat, 
+            limited_format=lformat, deck=deck, opp_deck=opp_deck)
 
-        filtered_n =        df0_i_f.shape[0] 
-        meta_deck_wr =      []
-        meta_decks =        df0_i_f.P2_Subarch.value_counts().keys().tolist()
-        meta_deck_counts =  df0_i_f.P2_Subarch.value_counts().tolist()
-        for i in meta_decks:
-            wins  = df0_i_f[(df0_i_f.P2_Subarch == i) & (df0_i_f.Match_Winner == "P1")].shape[0]
-            losses= df0_i_f[(df0_i_f.P2_Subarch == i) & (df0_i_f.Match_Winner == "P2")].shape[0]
-            total = df0_i_f[(df0_i_f.P2_Subarch == i)].shape[0]
+        filtered_n = df_p1_hero.shape[0] 
+        meta_deck_wr = []
+        meta_decks = df_p1_hero.P2_Subarch.unique().tolist()
+        meta_deck_counts = df_p1_hero.P2_Subarch.value_counts().tolist()
+        for index in meta_decks:
+            wins = df_p1_hero[(df_p1_hero.P2_Subarch == index) & (df_p1_hero.Match_Winner == "P1")].shape[0]
+            losses = df_p1_hero[(df_p1_hero.P2_Subarch == index) & (df_p1_hero.Match_Winner == "P2")].shape[0]
+            total = df_p1_hero[(df_p1_hero.P2_Subarch == index)].shape[0]
             if total == 0:
                 meta_deck_wr.append([wins,losses,"0"])
             else:
                 meta_deck_wr.append([wins,losses,to_percent(wins/total,1)])
                 
         hero_deck_wr = []
-        hero_decks =        df0_i_f.P1_Subarch.value_counts().keys().tolist()
-        hero_deck_counts =  df0_i_f.P1_Subarch.value_counts().tolist()
-        for i in hero_decks:
-            wins  = df0_i_f[(df0_i_f.P1_Subarch == i) & (df0_i_f.Match_Winner == "P1")].shape[0]
-            losses= df0_i_f[(df0_i_f.P1_Subarch == i) & (df0_i_f.Match_Winner == "P2")].shape[0]
-            total = df0_i_f[(df0_i_f.P1_Subarch == i)].shape[0]
+        hero_decks = df_p1_hero.P1_Subarch.unique().tolist()
+        hero_deck_counts = df_p1_hero.P1_Subarch.value_counts().tolist()
+        for index in hero_decks:
+            wins  = df_p1_hero[(df_p1_hero.P1_Subarch == index) & (df_p1_hero.Match_Winner == "P1")].shape[0]
+            losses= df_p1_hero[(df_p1_hero.P1_Subarch == index) & (df_p1_hero.Match_Winner == "P2")].shape[0]
+            total = df_p1_hero[(df_p1_hero.P1_Subarch == index)].shape[0]
             if total == 0:
                 hero_deck_wr.append([wins,losses,"0"])
             else:
                 hero_deck_wr.append([wins,losses,to_percent(wins/total,1)])        
 
-        mid_frame1["text"] = "Die Rolls"
-        tree1.tag_configure("colored",background="#cccccc")
-        tree1.delete(*tree1.get_children())
-        tree1["column"] = ["",""]
-        for i in tree1["column"]:
-            tree1.column(i,minwidth=20,stretch=True,width=20)
-            tree1.heading(i,text=i)
-        tree1.column(1,anchor="center")
-        tagged = False
-        for i in range(len(roll_values)):
-            tagged = not tagged
-            if tagged == True:
-                tree1.insert("","end",values=[roll_labels[i],roll_values[i]],tags=("colored",))
-            else:
-                tree1.insert("","end",values=[roll_labels[i],roll_values[i]])
-
         mid_frame2["text"] = "Overall Performance: " + mformat
         tree2.tag_configure("colored",background="#cccccc")
         tree2.delete(*tree2.get_children())
         tree2["column"] = ["Description","Wins","Losses","Match Win%"]
-        for i in tree2["column"]:
-            tree2.column(i,minwidth=20,stretch=True,width=20)
-            tree2.heading(i,text=i)
+        for index in tree2["column"]:
+            tree2.column(index,minwidth=20,stretch=True,width=20)
+            tree2.heading(index,text=index)
         tree2.column("Wins",anchor="center")
         tree2.column("Losses",anchor="center")
         tree2.column("Match Win%",anchor="center")
-        for i in range(len(formats_played)):
-            if (formats_played[i] == "Match Format") or (formats_played[i] == "Match Type"):
+        for index in range(len(formats_played)):
+            if (formats_played[index] == "Match Format") or (formats_played[index] == "Match Type"):
                 tagged = True
             else:
                 tagged = False
             if tagged == True:
-                tree2.insert("","end",values=[formats_played[i],
-                                              format_wins[i],
-                                              format_losses[i],
-                                              format_wr[i]],tags=("colored",))
+                tree2.insert("","end",values=[formats_played[index],
+                                              format_wins[index],
+                                              format_losses[index],
+                                              format_wr[index]],tags=("colored",))
             else:
-                tree2.insert("","end",values=[formats_played[i],
-                                              format_wins[i],
-                                              format_losses[i],
-                                              format_wr[i]])
+                tree2.insert("","end",values=[formats_played[index],
+                                              format_wins[index],
+                                              format_losses[index],
+                                              format_wr[index]])
 
         if (deck != "All Decks") or (opp_deck != "All Opp. Decks"):
             if lformat != "All Limited Formats":
@@ -3256,30 +3268,30 @@ def get_stats():
         tree3.tag_configure("colored",background="#cccccc")
         tree3.delete(*tree3.get_children())
         tree3["column"] = ["Decks","Share","Wins","Losses","Win%"]
-        for i in tree3["column"]:
-            tree3.column(i,minwidth=20,stretch=True,width=20)
-            tree3.heading(i,text=i)
-        for i in range(1,len(tree3["column"])):
-            tree3.column(i,anchor="center")
+        for column in tree3["column"]:
+            tree3.column(column,minwidth=20,stretch=True,width=20)
+            tree3.heading(column,text=column)
+        for index in range(1,len(tree3["column"])):
+            tree3.column(index,anchor="center")
         tagged = False
         if len(hero_decks) == 0:
             tree3.insert("","end",values=["No Games Found."],tags=('colored',))
-        for i in range(10):
-            if i >= len(hero_decks):
+        for index in range(10):
+            if index >= len(hero_decks):
                 break
             tagged = not tagged
             if tagged == True:
-                tree3.insert("","end",values=[hero_decks[i],
-                                              (str(hero_deck_counts[i])+" - ("+to_percent(hero_deck_counts[i]/filtered_n,0)+"%)"),
-                                              hero_deck_wr[i][0],
-                                              hero_deck_wr[i][1],
-                                              (hero_deck_wr[i][2]+"%")],tags=("colored",))
+                tree3.insert("","end",values=[hero_decks[index],
+                                              (str(hero_deck_counts[index])+" - ("+to_percent(hero_deck_counts[index]/filtered_n,0)+")"),
+                                              hero_deck_wr[index][0],
+                                              hero_deck_wr[index][1],
+                                              (hero_deck_wr[index][2])],tags=("colored",))
             else:
-                tree3.insert("","end",values=[hero_decks[i],
-                                              (str(hero_deck_counts[i])+" - ("+to_percent(hero_deck_counts[i]/filtered_n,0)+"%)"),
-                                              hero_deck_wr[i][0],
-                                              hero_deck_wr[i][1],
-                                              (hero_deck_wr[i][2]+"%")])
+                tree3.insert("","end",values=[hero_decks[index],
+                                              (str(hero_deck_counts[index])+" - ("+to_percent(hero_deck_counts[index]/filtered_n,0)+")"),
+                                              hero_deck_wr[index][0],
+                                              hero_deck_wr[index][1],
+                                              (hero_deck_wr[index][2])])
         
         if (deck != "All Decks") or (opp_deck != "All Opp. Decks"):
             if lformat != "All Limited Formats":
@@ -3294,46 +3306,41 @@ def get_stats():
         tree4.tag_configure("colored",background="#cccccc")
         tree4.delete(*tree4.get_children())
         tree4["column"] = ["Decks","Share","Wins","Losses","Win% Against"]
-        for i in tree4["column"]:
-            tree4.column(i,minwidth=20,stretch=True,width=20)
-            tree4.heading(i,text=i)
-        for i in range(1,len(tree4["column"])):
-            tree4.column(i,anchor="center")
+        for index in tree4["column"]:
+            tree4.column(index,minwidth=20,stretch=True,width=20)
+            tree4.heading(index,text=index)
+        for index in range(1,len(tree4["column"])):
+            tree4.column(index,anchor="center")
         tagged = False
         if len(meta_decks) == 0:
             tree4.insert("","end",values=["No Games Found."],tags=('colored',))
-        for i in range(10):
-            if i >= len(meta_decks):
+        for index in range(10):
+            if index >= len(meta_decks):
                 break
             tagged = not tagged
             if tagged == True:
-                tree4.insert("","end",values=[meta_decks[i],
-                                              (str(meta_deck_counts[i])+" - ("+to_percent(meta_deck_counts[i]/filtered_n,0)+"%)"),
-                                              meta_deck_wr[i][0],
-                                              meta_deck_wr[i][1],
-                                              (meta_deck_wr[i][2]+"%")],tags=("colored",))
+                tree4.insert("","end",values=[meta_decks[index],
+                                              (str(meta_deck_counts[index])+" - ("+to_percent(meta_deck_counts[index]/filtered_n,0)+")"),
+                                              meta_deck_wr[index][0],
+                                              meta_deck_wr[index][1],
+                                              (meta_deck_wr[index][2])],tags=("colored",))
             else:
-                tree4.insert("","end",values=[meta_decks[i],
-                                              (str(meta_deck_counts[i])+" - ("+to_percent(meta_deck_counts[i]/filtered_n,0)+"%)"),
-                                              meta_deck_wr[i][0],
-                                              meta_deck_wr[i][1],
-                                              (meta_deck_wr[i][2]+"%")])
+                tree4.insert("","end",values=[meta_decks[index],
+                                              (str(meta_deck_counts[index])+" - ("+to_percent(meta_deck_counts[index]/filtered_n,0)+")"),
+                                              meta_deck_wr[index][0],
+                                              meta_deck_wr[index][1],
+                                              (meta_deck_wr[index][2])])
 
     def game_stats(hero,opp,mformat,lformat,deck,opp_deck,date_range,s_type):
         stats_window.title("Statistics - Game Data: " + hero)
         clear_frames()
-        def tree_skip(event):
-            if tree1.identify_region(event.x,event.y) == "separator":
-                return "break"
-            if tree1.identify_region(event.x,event.y) == "heading":
-                return "break"
         def tree_setup(*argv):
             for i in argv:
                 i.place(relheight=1, relwidth=1)
-                i.bind("<Button-1>",tree_skip)
-                i.bind("<Enter>",tree_skip)
-                i.bind("<ButtonRelease-1>",tree_skip)
-                i.bind("<Motion>",tree_skip)            
+                i.bind("<Button-1>",suppress_cursor)
+                i.bind("<Enter>",suppress_cursor)
+                i.bind("<ButtonRelease-1>",suppress_cursor)
+                i.bind("<Motion>",suppress_cursor)            
         tree1 = ttk.Treeview(mid_frame1,show="headings",selectmode="none",padding=10)
         tree2 = ttk.Treeview(mid_frame2,show="headings",selectmode="none",padding=10)
         tree3 = ttk.Treeview(mid_frame3,show="headings",selectmode="none",padding=10)
@@ -3853,18 +3860,13 @@ def get_stats():
     def opp_stats(hero,opp,mformat,lformat,deck,opp_deck,date_range,s_type):
         stats_window.title("Statistics - Opponent Data: " + hero + " vs. " + opp)
         clear_frames()
-        def tree_skip(event):
-            if tree1.identify_region(event.x,event.y) == "separator":
-                return "break"
-            if tree1.identify_region(event.x,event.y) == "heading":
-                return "break"
         def tree_setup(*argv):
             for i in argv:
                 i.place(relheight=1, relwidth=1)
-                i.bind("<Button-1>",tree_skip)
-                i.bind("<Enter>",tree_skip)
-                i.bind("<ButtonRelease-1>",tree_skip)
-                i.bind("<Motion>",tree_skip)          
+                i.bind("<Button-1>",suppress_cursor)
+                i.bind("<Enter>",suppress_cursor)
+                i.bind("<ButtonRelease-1>",suppress_cursor)
+                i.bind("<Motion>",suppress_cursor)          
         tree1 = ttk.Treeview(mid_frame1,show="headings",selectmode="none",padding=10)
         tree2 = ttk.Treeview(mid_frame2,show="headings",selectmode="none",padding=10)
         tree3 = ttk.Treeview(mid_frame3,show="headings",selectmode="none",padding=10)       
@@ -3960,7 +3962,7 @@ def get_stats():
         if (format_wins[0] + format_losses[0]) == 0:
             format_wr = ["0.0%"]
         else:
-            format_wr = [to_percent(format_wins[0]/(format_wins[0]+format_losses[0]),1) + "%"]    #adding overall in L[0]
+            format_wr = [to_percent(format_wins[0]/(format_wins[0]+format_losses[0]),1)]    #adding overall in L[0]
 
         for i in formats_played:
             wins  =  df0_i_f[(df0_i_f.Format == i) & (df0_i_f.Match_Winner == "P1")].shape[0]
@@ -3968,9 +3970,9 @@ def get_stats():
             format_wins.append(str(wins))
             format_losses.append(str(losses))
             if (wins + losses) == 0:
-                format_wr.append(to_percent(0,1) + "%")
+                format_wr.append(to_percent(0,1))
             else:
-                format_wr.append(to_percent(wins/(wins+losses),1) + "%")
+                format_wr.append(to_percent(wins/(wins+losses),1))
         formats_played.insert(0,"Match Format")
 
         formats_played.extend(["","Match Type"])
@@ -3986,9 +3988,9 @@ def get_stats():
             format_wins.append(mt_wins)
             format_losses.append(mt_losses)
             if (mt_wins + mt_losses) == 0:
-                format_wr.append(to_percent(0,1) + "%")
+                format_wr.append(to_percent(0,1))
             else:
-                format_wr.append(to_percent(mt_wins/(mt_wins+mt_losses),1) + "%")
+                format_wr.append(to_percent(mt_wins/(mt_wins+mt_losses),1))
 
         filtered_n =        df0_i_f.shape[0] 
         meta_deck_wr =      []
@@ -4100,16 +4102,16 @@ def get_stats():
             tagged = not tagged
             if tagged == True:
                 tree4.insert("","end",values=[meta_decks[i],
-                                              (str(meta_deck_counts[i])+" - ("+to_percent(meta_deck_counts[i]/filtered_n,0)+"%)"),
+                                              (str(meta_deck_counts[i])+" - ("+to_percent(meta_deck_counts[i]/filtered_n,0)+")"),
                                               meta_deck_wr[i][0],
                                               meta_deck_wr[i][1],
-                                              (meta_deck_wr[i][2]+"%")],tags=("colored",))
+                                              (meta_deck_wr[i][2])],tags=("colored",))
             else:
                 tree4.insert("","end",values=[meta_decks[i],
-                                              (str(meta_deck_counts[i])+" - ("+to_percent(meta_deck_counts[i]/filtered_n,0)+"%)"),
+                                              (str(meta_deck_counts[i])+" - ("+to_percent(meta_deck_counts[i]/filtered_n,0)+")"),
                                               meta_deck_wr[i][0],
                                               meta_deck_wr[i][1],
-                                              (meta_deck_wr[i][2]+"%")])
+                                              (meta_deck_wr[i][2])])
 
     def time_stats(hero,opp,mformat,lformat,deck,opp_deck,date_range,s_type):
         stats_window.title("Statistics - Time Data: " + hero)
@@ -4415,17 +4417,12 @@ def get_stats():
             tree2.insert("","end",values=["No Games Found."],tags=('colored',))
         for i in list_post:
             tree2.insert("","end",values=[i[0],
-                                          i[1]+" - ("+to_percent(int(i[1])/n_post,0)+"%)",
+                                          i[1]+" - ("+to_percent(int(i[1])/n_post,0)+")",
                                           i[3],
                                           round(float(i[3])-wr_post,1)])
                                                 
     def to_percent(fl,n):
-        if fl == 0:
-            return "0.0"
-        if n == 0:
-            return str(int(fl*100))
-        else:
-            return str(round(fl*100,n))
+        return str(round(fl*100,n)) + '%'
 
     def update_format_menu(*argv):
         format_options = df_matches_inverted[(df_matches_inverted.P1 == player.get())].Format.value_counts().keys().tolist()
@@ -5102,7 +5099,7 @@ def debug():
         txt.write("Other Variables:\n")
         txt.write(f"    display: {display}\n")
         txt.write(f"    prev_display: {prev_display}\n")
-        txt.write(f"    uaw: {uaw}\n")
+        txt.write(f"    uaw: {user_entered_winner}\n")
         txt.write(f"    field: {field}\n")
         txt.write(f"    data_loaded: {data_loaded}\n")
         txt.write(f"    filter_changed: {filter_changed}\n")
