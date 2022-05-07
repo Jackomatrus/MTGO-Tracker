@@ -3204,6 +3204,7 @@ def get_stats():
         # End Die Roll Statistics (Tree1)
         
         # TODO limit each tree to a number of entries that fit
+        # TODO labels vanished in one case (couldn't reproduce)
         # Start Overall Performance Statistics
         filtered_df = filter_df(df_p1_hero, date_range=date_range, format_filter=mformat)
         display_df = pd.DataFrame(columns = ['Description', 'Wins', 'Losses', 'Match Win%'])
@@ -3216,9 +3217,11 @@ def get_stats():
             formats_played = filtered_df.Format.unique().tolist()
         for index, mtg_format in enumerate(formats_played):
             if mtg_format in INPUT_OPTIONS["Limited Formats"]:
-                wins, losses, winrate = get_match_winrates(filtered_df[filtered_df.Limited_Format==mtg_format])
+                wins, losses, winrate = get_match_winrates(
+                    filtered_df[filtered_df.Limited_Format==mtg_format])
             else:
-                wins, losses, winrate = get_match_winrates(filtered_df[filtered_df.Format==mtg_format])
+                wins, losses, winrate = get_match_winrates(
+                    filtered_df[filtered_df.Format==mtg_format])
             display_df.loc[index] = [mtg_format, wins, losses, winrate]
         for index, match_type in enumerate(filtered_df.Match_Type.unique().tolist()):
             wins, losses, winrate = get_match_winrates(filtered_df[filtered_df.Match_Type == match_type])
@@ -3310,6 +3313,8 @@ def get_stats():
                                     columns=match_stats_cols)
             dataframe_into_tree(tree2, display_df, tag_factory=tag_factory)
             mid_frame2['text'] = f'Matchup Data: {mformat}{limited}, {deck} vs. {opp_deck}'
+        else:
+            mid_frame2['text'] = 'Choose a Matchup'
         # selected hero deck vs all opp. decks
         if deck != "All Decks":
             hero_deck_df = filter_df(merged_df, deck=deck)
@@ -3317,6 +3322,8 @@ def get_stats():
                                     columns=match_stats_cols)
             dataframe_into_tree(tree3, display_df, tag_factory=tag_factory)
             mid_frame3['text'] = f'{mformat}{limited}: {deck} vs. All Opp. Decks'
+        else:
+            mid_frame3['text'] = 'Choose a Deck'
         # all hero decks vs selected opponent decks
         if opp_deck != "All Opp. Decks":
             opp_deck_df = filter_df(merged_df, opp_deck=opp_deck)
@@ -3324,6 +3331,8 @@ def get_stats():
                                     columns=match_stats_cols)
             dataframe_into_tree(tree4, display_df, tag_factory=tag_factory)
             mid_frame4['text'] = f'{mformat}{limited}: All Decks vs. {opp_deck}'
+        else:
+            mid_frame4['text'] = 'Choose an Opposing Deck'
 
 
     def play_stats(hero,opp,mformat,lformat,deck,opp_deck,date_range,s_type):
