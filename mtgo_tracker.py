@@ -2974,8 +2974,41 @@ def get_game_winrates(df: pd.DataFrame) -> tuple[int, int, str]:
     winrate = to_percent(wins / (wins+losses), 1) if (wins+losses) else '0.0%'
     return (wins, losses, winrate)
 
+def get_game_stats(df: pd.DataFrame
+        ) -> tuple[int, int, str, float, float, float]:
+    game_count = df.shape[0]
+    winner_counts = df.Game_Winner.value_counts()
+    wins, losses = winner_counts.get('P1',0), winner_counts.get('P2',0)
+    winrate = to_percent(wins / (wins+losses), 1) if (wins+losses) else '0.0%'
+    hero_mull_rate =round((df.P1_Mulls.sum()/game_count),2) if game_count else 0.0
+    opp_mull_rate = round((df.P2_Mulls.sum()/game_count),2) if game_count else 0.0
+    turn_rate = round((df.Turns.sum()/game_count),2) if game_count else 0.0
+    return [wins, losses, winrate, hero_mull_rate, opp_mull_rate, turn_rate]
+
+def segmented_stats_play_draw(df: pd.DataFrame
+        ) -> dict[str, tuple[int, int, str, float, float, float]]:
+    overall = ['','Overall'] + get_game_stats(df)
+    on_play = ['','Play'] + get_game_stats(df[df.On_Play == "P1"])
+    on_draw = ['','Draw'] + get_game_stats(df[df.On_Play == "P2"])
+    return [overall, on_play, on_draw]
+
+def segmented_stats_game_num(df: pd.DataFrame
+        ) -> list[list[Union[int, str, float]]]:
+    overall = segmented_stats_play_draw(df)
+    overall[0][0] = 'All Games'
+    g1 = segmented_stats_play_draw(df[df.Game_Num == 1])
+    g1[0][0] = 'Game 1'
+    g2 = segmented_stats_play_draw(df[df.Game_Num == 2])
+    g2[0][0] = 'Game 2'
+    g3 = segmented_stats_play_draw(df[df.Game_Num == 3])
+    g3[0][0] = 'Game 3'
+    return overall + g1 + g2 + g3
+
 def to_percent(fl,n):
     return str(round(fl*100,n)) + '%'
+
+def tag_even_colored(row: pd.Series) -> tuple:
+    return tuple() if (row.name % 2) else ('colored',)
 
 def get_stats():
     width = 1350
@@ -3166,11 +3199,11 @@ def get_stats():
         roll_df = pd.DataFrame(zip(roll_labels, roll_values), columns = ['Description', 'Value'])
         mid_frame1["text"] = "Die Rolls"
         tree1.tag_configure("colored",background="#cccccc")
-        roll_tag = lambda row: (tuple() if (row.name % 2) else ('colored',))
-        dataframe_into_tree(tree1, roll_df, tag_factory=roll_tag)
+        dataframe_into_tree(tree1, roll_df, tag_factory=tag_even_colored)
         tree1.column(1,anchor="center")
         # End Die Roll Statistics (Tree1)
         
+        # TODO limit each tree to a number of entries that fit
         # Start Overall Performance Statistics
         filtered_df = filter_df(df_p1_hero, date_range=date_range, format_filter=mformat)
         display_df = pd.DataFrame(columns = ['Description', 'Wins', 'Losses', 'Match Win%'])
@@ -3214,7 +3247,7 @@ def get_stats():
             count = deck_counts.get(played_deck)
             deck_share = f'{count} - ({to_percent(count/filtered_match_num,1)})'
             display_df.loc[i] = [played_deck, deck_share, wins, losses, winrate]
-        dataframe_into_tree(tree3, display_df, tag_factory=roll_tag)
+        dataframe_into_tree(tree3, display_df, tag_factory=tag_even_colored)
         # End Decks Played Statistics
 
         # Start Observed Metagame Statistics
@@ -3225,9 +3258,10 @@ def get_stats():
             count = opp_deck_counts.get(opp_deck)
             deck_share = f'{count} - ({to_percent(count/filtered_match_num,1)})'
             display_df.loc[i] = [opp_deck, deck_share, wins, losses, winrate]
-        dataframe_into_tree(tree4, display_df, tag_factory=roll_tag)
+        dataframe_into_tree(tree4, display_df, tag_factory=tag_even_colored)
 
     def game_stats(hero,opp,mformat,lformat,deck,opp_deck,date_range,s_type):
+        # TODO adjust labels when ALL DECKS is selected
         stats_window.title("Statistics - Game Data: " + hero)
         clear_frames()
         def tree_setup(label_frame: tk.LabelFrame) -> ttk.Treeview:
@@ -3237,6 +3271,7 @@ def get_stats():
             tree.bind("<Enter>",suppress_cursor)
             tree.bind("<ButtonRelease-1>",suppress_cursor)
             tree.bind("<Motion>",suppress_cursor)
+            tree.tag_configure("colored",background="#cccccc")
             return tree
         tree1 = tree_setup(mid_frame1)
         tree2 = tree_setup(mid_frame2)
@@ -3251,185 +3286,45 @@ def get_stats():
         mid_frame3.grid(row=1,column=0,sticky="nsew")
         mid_frame4.grid(row=1,column=1,sticky="nsew")
 
-        df1_i_merge = pd.merge(df_matches_inverted,
+        match_stats_cols = ['Game Segment', 'PD Segment', 'Wins', 'Losses',
+            'Win%', 'Mulls/G', 'Opp. Mulls/G', 'Turns/G']
+        # apply selected filters
+        merged_df = pd.merge(df_matches_inverted,
                                 df_games_inverted,
                                 how="inner",
                                 on=["Match_ID","P1","P2"])
-        if mformat != "All Formats":
-            df1_i_merge = df1_i_merge[(df1_i_merge.Format == mformat)]
-        if lformat != "All Limited Formats":
-            df1_i_merge = df1_i_merge[(df1_i_merge.Limited_Format == lformat)]
-        df1_i_merge = df1_i_merge[(df1_i_merge.Date > date_range[0]) & (df1_i_merge.Date < date_range[1])]
-        df1_i_hero = df1_i_merge[df1_i_merge.P1 == hero]
-        df1_i_hero_p = df1_i_hero[df1_i_hero.On_Play == "P1"]
-        df1_i_hero_d = df1_i_hero[df1_i_hero.On_Play == "P2"]
+        merged_df = filter_df(merged_df, hero, format_filter = mformat, 
+            limited_format=lformat, date_range=date_range)
         
-        df1_i_hero_g1 = df1_i_hero[df1_i_hero.Game_Num == 1]
-        df1_i_hero_g1_p = df1_i_hero_g1[df1_i_hero_g1.On_Play == "P1"]
-        df1_i_hero_g1_d = df1_i_hero_g1[df1_i_hero_g1.On_Play == "P2"]
-        
-        df1_i_hero_g2 = df1_i_hero[df1_i_hero.Game_Num == 2]
-        df1_i_hero_g2_p = df1_i_hero_g2[df1_i_hero_g2.On_Play == "P1"]
-        df1_i_hero_g2_d = df1_i_hero_g2[df1_i_hero_g2.On_Play == "P2"]
-        
-        df1_i_hero_g3 = df1_i_hero[df1_i_hero.Game_Num == 3]
-        df1_i_hero_g3_p = df1_i_hero_g3[df1_i_hero_g3.On_Play == "P1"]
-        df1_i_hero_g3_d = df1_i_hero_g3[df1_i_hero_g3.On_Play == "P2"]
-
-        df_list = [df1_i_hero,
-                   df1_i_hero_p,
-                   df1_i_hero_d,
-                   df1_i_hero_g1,
-                   df1_i_hero_g1_p,
-                   df1_i_hero_g1_d,
-                   df1_i_hero_g2,
-                   df1_i_hero_g2_p,
-                   df1_i_hero_g2_d,
-                   df1_i_hero_g3,
-                   df1_i_hero_g3_p,
-                   df1_i_hero_g3_d]
-
-        frame_labels = ["Game Data: " + mformat,
-                        "Matchup Data",
-                        "Choose a Deck",
-                        "Choose an Opposing Deck"]
-        if lformat != "All Limited Formats":
-            frame_labels[0] += " - " + lformat
-        tree1data = []
-        for i in df_list:
-            total_n = i.shape[0]
-            wins, losses, win_rate = get_game_winrates(i)
-            if total_n == 0:
-                hero_mull_rate = 0.0
-                opp_mull_rate = 0.0
-                turn_rate = 0.0
-            else:
-                hero_mull_rate =round((i.P1_Mulls.sum()/total_n),2)
-                opp_mull_rate = round((i.P2_Mulls.sum()/total_n),2)
-                turn_rate = round((i.Turns.sum()/total_n),2)
-            tree1data.append([wins,
-                              losses,
-                              win_rate,
-                              hero_mull_rate,
-                              opp_mull_rate,
-                              turn_rate])
-        
-        tree2data = []
+        # overall game stats
+        display_df = pd.DataFrame(segmented_stats_game_num(merged_df),
+                                columns = match_stats_cols)
+        tag_factory = lambda row: ('colored',) if row.name in (0,1,2,6,7,8) else tuple()
+        limited = f' - {lformat}' if lformat != 'All Limited Formats' else ''
+        mid_frame1['text'] = f"Game Data: {mformat}{limited}"
+        dataframe_into_tree(tree1, display_df, tag_factory=tag_factory)
+        # specific matchup stats
         if (deck != "All Decks") & (opp_deck != "All Opp. Decks"):
-            if lformat != "All Limited Formats":
-                frame_labels[1] = ("Matchup Data: " + mformat + " - " + lformat + ", " + deck + " vs. " + opp_deck)
-            else:
-                frame_labels[1] = ("Matchup Data: " + mformat + ", " + deck + " vs. " + opp_deck)
-            for i in df_list:
-                total_n = i[(i.P1_Subarch == deck) & (i.P2_Subarch == opp_deck)].shape[0]
-                wins =    i[(i.P1_Subarch == deck) & (i.P2_Subarch == opp_deck) & (i.Game_Winner == "P1")].shape[0]
-                losses =  i[(i.P1_Subarch == deck) & (i.P2_Subarch == opp_deck) & (i.Game_Winner == "P2")].shape[0]
-                if (wins+losses) == 0:
-                    win_rate = "0.0"
-                else:
-                    win_rate = to_percent(wins/(wins+losses),1)
-                if total_n == 0:
-                    hero_mull_rate =0.0
-                    opp_mull_rate = 0.0
-                    turn_rate =     0.0
-                else:
-                    hero_mull_rate =round((i[(i.P1_Subarch == deck) & (i.P2_Subarch == opp_deck)].P1_Mulls.sum()/total_n),2)
-                    opp_mull_rate = round((i[(i.P1_Subarch == deck) & (i.P2_Subarch == opp_deck)].P2_Mulls.sum()/total_n),2)
-                    turn_rate =     round((i[(i.P1_Subarch == deck) & (i.P2_Subarch == opp_deck)].Turns.sum()/total_n),2)     
-                tree2data.append([wins,
-                                  losses,
-                                  win_rate,
-                                  hero_mull_rate,
-                                  opp_mull_rate,
-                                  turn_rate])
-        
-        tree3data = []
+            matchup_df = filter_df(merged_df, opp_deck=opp_deck, deck=deck)
+            display_df = pd.DataFrame(segmented_stats_game_num(matchup_df),
+                                    columns=match_stats_cols)
+            dataframe_into_tree(tree2, display_df, tag_factory=tag_factory)
+            mid_frame2['text'] = f'Matchup Data: {mformat}{limited}, {deck} vs. {opp_deck}'
+        # selected hero deck vs all opp. decks
         if deck != "All Decks":
-            if lformat != "All Limited Formats":
-                frame_labels[2] = (mformat + " - " + lformat + ": " + deck + " vs. All Opp. Decks")
-            else:
-                frame_labels[2] = (mformat + ": " + deck + " vs. All Opp. Decks")
-            for i in df_list:
-                total_n = i[(i.P1_Subarch == deck)].shape[0]
-                wins =    i[(i.P1_Subarch == deck) & (i.Game_Winner == "P1")].shape[0]
-                losses =  i[(i.P1_Subarch == deck) & (i.Game_Winner == "P2")].shape[0]
-                if (wins+losses) == 0:
-                    win_rate = "0.0"
-                else:
-                    win_rate = to_percent(wins/(wins+losses),1)
-                if total_n == 0:
-                    hero_mull_rate =0.0
-                    opp_mull_rate = 0.0
-                    turn_rate =     0.0
-                else:
-                    hero_mull_rate =round((i[(i.P1_Subarch == deck)].P1_Mulls.sum()/total_n),2)
-                    opp_mull_rate = round((i[(i.P1_Subarch == deck)].P2_Mulls.sum()/total_n),2)
-                    turn_rate =     round((i[(i.P1_Subarch == deck)].Turns.sum()/total_n),2)     
-                tree3data.append([wins,
-                                  losses,
-                                  win_rate,
-                                  hero_mull_rate,
-                                  opp_mull_rate,
-                                  turn_rate])
-            
-        tree4data = []
+            hero_deck_df = filter_df(merged_df, deck=deck)
+            display_df = pd.DataFrame(segmented_stats_game_num(hero_deck_df),
+                                    columns=match_stats_cols)
+            dataframe_into_tree(tree3, display_df, tag_factory=tag_factory)
+            mid_frame3['text'] = f'{mformat}{limited}: {deck} vs. All Opp. Decks'
+        # all hero decks vs selected opponent decks
         if opp_deck != "All Opp. Decks":
-            if lformat != "All Limited Formats":
-                frame_labels[3] = (mformat + " - " + lformat + ": All Decks vs. " + opp_deck)
-            else:
-                frame_labels[3] = (mformat + ": All Decks vs. " + opp_deck)
-            for i in df_list:
-                total_n = i[(i.P2_Subarch == opp_deck)].shape[0]
-                wins =    i[(i.P2_Subarch == opp_deck) & (i.Game_Winner == "P1")].shape[0]
-                losses =  i[(i.P2_Subarch == opp_deck) & (i.Game_Winner == "P2")].shape[0]
-                if (wins+losses) == 0:
-                    win_rate = "0.0"
-                else:
-                    win_rate = to_percent(wins/(wins+losses),1)
-                if total_n == 0:
-                    hero_mull_rate =0.0
-                    opp_mull_rate = 0.0
-                    turn_rate =     0.0
-                else:
-                    hero_mull_rate =round((i[(i.P2_Subarch == opp_deck)].P1_Mulls.sum()/total_n),2)
-                    opp_mull_rate = round((i[(i.P2_Subarch == opp_deck)].P2_Mulls.sum()/total_n),2)
-                    turn_rate =     round((i[(i.P2_Subarch == opp_deck)].Turns.sum()/total_n),2)     
-                tree4data.append([wins,
-                                losses,
-                                win_rate,
-                                hero_mull_rate,
-                                opp_mull_rate,
-                                turn_rate])
-        
-        tree_data =     [tree1data,tree2data,tree3data,tree4data]
-        frames =        [mid_frame1,mid_frame2,mid_frame3,mid_frame4]
-        for index,tree in enumerate([tree1,tree2,tree3,tree4]):
-            frames[index]["text"] = frame_labels[index]
-            tree.tag_configure("colored",background="#cccccc")
-            if tree_data[index]:
-                tree.delete(*tree.get_children())
-                tree["column"] = ["","","Wins","Losses","Win%","Mulls/G","Opp Mulls/G","Turns/G"]
-                for i in tree["column"]:
-                    tree.column(i,minwidth=25,stretch=True,width=25)
-                    tree.heading(i,text=i)
-                tree.column(0,minwidth=110,stretch=False,width=110)
-                for i in range(2,len(tree["column"])):
-                    tree.column(i,anchor="center")
-                index_list = [["All Games","Overall"],["","Play"],["","Draw"],
-                            ["Game 1","Overall"],["","Play"],["","Draw"],
-                            ["Game 2","Overall"],["","Play"],["","Draw"],
-                            ["Game 3","Overall"],["","Play"],["","Draw"]]
-                tagged = True
-                count = 0
-                for i in range(len(index_list)):
-                    if tagged == True:
-                        tree.insert("","end",values=index_list[i]+tree_data[index][i],tags=("colored",))
-                    else:
-                        tree.insert("","end",values=index_list[i]+tree_data[index][i])
-                    count += 1
-                    if count == 3:
-                        tagged = not tagged
-                        count = 0
+            opp_deck_df = filter_df(merged_df, opp_deck=opp_deck)
+            display_df = pd.DataFrame(segmented_stats_game_num(opp_deck_df),
+                                    columns=match_stats_cols)
+            dataframe_into_tree(tree4, display_df, tag_factory=tag_factory)
+            mid_frame4['text'] = f'{mformat}{limited}: All Decks vs. {opp_deck}'
+
 
     def play_stats(hero,opp,mformat,lformat,deck,opp_deck,date_range,s_type):
         stats_window.title("Statistics - Play Data: " + hero)
