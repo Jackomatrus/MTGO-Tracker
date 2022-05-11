@@ -645,7 +645,7 @@ def get_all_data(logs_path: Path,drafts_path: Path,copy: bool) -> None:
 
 def print_data(
     data: Union[MatchData, GameData, PlayData, list], headers: list[str],
-    update_status: bool, start_index: int, apply_filter: bool) -> None:
+    update_status: bool, start_index: int=0, apply_filter: bool=False) -> None:
     global curr_data
     small_headers = ["P1_Roll","P2_Roll","P1_Wins","P2_Wins","Game_Num","Play_Num","Turn_Num","Pack_Num","Pick_Num","Pick_Ovr"]
     med_headers = ["Avail_1","Avail_2","Avail_3","Avail_4","Avail_5","Avail_6","Avail_7","Avail_8","Avail_9","Avail_10","Avail_11","Avail_12","Avail_13","Avail_14"]
@@ -3197,14 +3197,12 @@ def get_stats():
         roll_labels = ["Roll 1 Mean","Roll 2 Mean","Roll 1 Win%","Roll 2 Win%","","Hero Roll Win%"]
         roll_values = [roll_1_mean,roll_2_mean,p1_roll_wr,p2_roll_wr,"",to_percent(rolls_won/hero_total_matches,1)]
         roll_df = pd.DataFrame(zip(roll_labels, roll_values), columns = ['Description', 'Value'])
-        mid_frame1["text"] = "Die Rolls"
-        tree1.tag_configure("colored",background="#cccccc")
         dataframe_into_tree(tree1, roll_df, tag_factory=tag_even_colored)
         tree1.column(1,anchor="center")
+        mid_frame1["text"] = "Die Rolls" # adjust heading
         # End Die Roll Statistics (Tree1)
         
         # TODO limit each tree to a number of entries that fit
-        # TODO labels vanished in one case (couldn't reproduce)
         # Start Overall Performance Statistics
         filtered_df = filter_df(df_p1_hero, date_range=date_range, format_filter=mformat)
         display_df = pd.DataFrame(columns = ['Description', 'Wins', 'Losses', 'Match Win%'])
@@ -3216,7 +3214,7 @@ def get_stats():
         else:
             formats_played = filtered_df.Format.unique().tolist()
         for index, mtg_format in enumerate(formats_played):
-            if mtg_format in INPUT_OPTIONS["Limited Formats"]:
+            if mformat in INPUT_OPTIONS["Limited Formats"]:
                 wins, losses, winrate = get_match_winrates(
                     filtered_df[filtered_df.Limited_Format==mtg_format])
             else:
@@ -3228,13 +3226,14 @@ def get_stats():
             display_df.loc[100+index] = [match_type, wins, losses, winrate]
         tag_factory = lambda row: ('colored',) if row['Description'] in ('Match Type', 'Match Format') else tuple()
         dataframe_into_tree(tree2, display_df, tag_factory=tag_factory)
-        mid_frame2["text"] = "Overall Performance: " + mformat
-        tree2.tag_configure("colored",background="#cccccc")
+        mid_frame2["text"] = "Overall Performance: " + mformat # adjust heading
         # End Overall Performance Statistics
 
+
         # Start Decks Played Statistics
+        # This table disregards the selected deck, because it's a list of played decks
         filtered_df = filter_df(df_matches_inverted, hero=hero, 
-            format_filter=mformat, limited_format=lformat, deck=deck, 
+            format_filter=mformat, limited_format=lformat,
             opp_deck=opp_deck, date_range=date_range)
         filtered_match_num = filtered_df.shape[0]
         display_df = pd.DataFrame(columns=['Decks','Share','Wins','Losses','Win%'])
@@ -3252,9 +3251,18 @@ def get_stats():
             display_df.loc[i] = [played_deck, deck_share, wins, losses, winrate]
         dataframe_into_tree(tree3, display_df, tag_factory=tag_even_colored)
         # End Decks Played Statistics
+        # Start Decks Played Label
+        opp_deck_str = f' vs. {opp_deck}' if opp_deck != 'All Opp. Decks' else ''
+        limited = f' - {lformat}' if lformat != 'All Limited Formats' else ''
+        mid_frame3['text'] = f'Decks Played: {mformat}{limited}{opp_deck_str}'
+        # End Decks Played Label
 
         # Start Observed Metagame Statistics
+        # This table disregards own opp deck selection as it's a metagame report
         display_df = pd.DataFrame(columns=['Decks','Share','Wins','Losses','Win% Against'])
+        filtered_df = filter_df(df_matches_inverted, hero=hero, 
+            format_filter=mformat, limited_format=lformat,
+            deck=deck, date_range=date_range)
         opp_deck_counts = filtered_df.P2_Subarch.value_counts()
         for i, opp_deck in enumerate(opp_deck_counts.keys()):
             wins, losses, winrate = get_match_winrates(filter_df(filtered_df,opp_deck=opp_deck))
@@ -3262,9 +3270,14 @@ def get_stats():
             deck_share = f'{count} - ({to_percent(count/filtered_match_num,1)})'
             display_df.loc[i] = [opp_deck, deck_share, wins, losses, winrate]
         dataframe_into_tree(tree4, display_df, tag_factory=tag_even_colored)
+        # End Metagame Stats
+        # Start Metagame Label
+        own_deck_str = f' Playing {deck}' if deck != 'All Decks' else ''
+        limited = f' - {lformat}' if lformat != 'All Limited Formats' else ''
+        mid_frame4['text'] = f'Observed Metagame: {mformat}{limited}{own_deck_str}'
+        # End Metagame Label
 
     def game_stats(hero,opp,mformat,lformat,deck,opp_deck,date_range,s_type):
-        # TODO adjust labels when ALL DECKS is selected
         stats_window.title("Statistics - Game Data: " + hero)
         clear_frames()
         def tree_setup(label_frame: tk.LabelFrame) -> ttk.Treeview:
