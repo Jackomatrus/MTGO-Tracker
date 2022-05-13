@@ -660,11 +660,11 @@ def print_data(
     tree1["columns"] = headers
 
     # Insert column headers into tree
-    for header in tree1["columns"]:
-        width = header_widths.get(header,100)
-        tree1.column(header, anchor="center", stretch=False, width=width)
-        tree1.heading(header, text=header, 
-        command=lambda _col=header: sort_column2(_col,False,tree1))
+    for condition in tree1["columns"]:
+        width = header_widths.get(condition,100)
+        tree1.column(condition, anchor="center", stretch=False, width=width)
+        tree1.heading(condition, text=condition, 
+        command=lambda _col=condition: sort_column2(_col,False,tree1))
     tree1.column(0,anchor="w")
     
     # Build dataframe being printed.
@@ -692,19 +692,19 @@ def print_data(
         for key in filter_dict:
             if key not in headers:
                 continue
-            for header in filter_dict[key]:
-                if header[2:].isnumeric():
-                    value = int(header[2:])
+            for condition in filter_dict[key]:
+                if condition[2:].isnumeric():
+                    value = int(condition[2:])
                 else:
-                    value = header[2:]
-                if header[0] == "=":
+                    value = condition[2:]
+                if condition[0] == "=":
                     if key == "Date":
                         filtered_list.append(df[(df[key].str.contains(value[0:10]))])
                     else:
                         filtered_list.append(df[(df[key] == value)])
-                elif header[0] == ">":
+                elif condition[0] == ">":
                     filtered_list.append(df[(df[key] > value)])
-                elif header[0] == "<":
+                elif condition[0] == "<":
                     filtered_list.append(df[(df[key] < value)])
             if len(filtered_list) == 0:
                 pass
@@ -713,7 +713,7 @@ def print_data(
             else:
                 index = 1
                 df = filtered_list[0]
-                while index < (len(filtered_list)):
+                while index < len(filtered_list):
                     df = pd.merge(df,filtered_list[index],how="outer")
                     index += 1
             filtered_list.clear()
@@ -735,11 +735,12 @@ def print_data(
     next_button["state"] = tk.DISABLED if end_index == len(df_rows) else tk.NORMAL
     back_button["state"] = tk.DISABLED if start_index == 0 else tk.NORMAL
 
-    for header in range(start_index,end_index):
-        tree1.insert("","end",values=df_rows[header])
+    for condition in range(start_index,end_index):
+        tree1.insert("","end",values=df_rows[condition])
 
     if update_status:
         update_status_bar(status=f"Displaying: {str(start_index + 1)}-{str(end_index)} of {str(len(df_rows))} total records.")
+
 def get_lists():
     global ALL_DECKS
     global ask_to_save
