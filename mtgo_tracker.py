@@ -2700,22 +2700,22 @@ def import_window():
         FILEPATH_DRAFTS = label1["text"]
         FILEPATH_LOGS = label2["text"]
 
-        if overwrite == True:
+        if overwrite:
             h = HERO
             match_dict = user_inputs(type="Matches")
             game_dict = user_inputs(type="Games")
             clear_loaded()
             get_all_data(logs_path=FILEPATH_LOGS_COPY,drafts_path=FILEPATH_DRAFTS_COPY,copy=False)
-            for i in ALL_DATA[0]:
+            for match in ALL_DATA.matches:
                 try:
-                    i[HEADERS["Matches"].index("Draft_ID")] = match_dict[i[0]][1]
-                    i[HEADERS["Matches"].index("P1_Arch")] = match_dict[i[0]][0][i[HEADERS["Matches"].index("P1")]][0]
-                    i[HEADERS["Matches"].index("P1_Subarch")] = match_dict[i[0]][0][i[HEADERS["Matches"].index("P1")]][1]
-                    i[HEADERS["Matches"].index("P2_Arch")] = match_dict[i[0]][0][i[HEADERS["Matches"].index("P2")]][0]
-                    i[HEADERS["Matches"].index("P2_Subarch")] = match_dict[i[0]][0][i[HEADERS["Matches"].index("P2")]][1]
-                    i[HEADERS["Matches"].index("Format")] = match_dict[i[0]][2]
-                    i[HEADERS["Matches"].index("Limited_Format")] = match_dict[i[0]][3]
-                    i[HEADERS["Matches"].index("Match_Type")] = match_dict[i[0]][4]
+                    match.Draft_ID = match_dict[match[0]][1]
+                    match.P1_Subarch = match_dict[match[0]][0][match.P1][1]
+                    match.P1_Arch = match_dict[match[0]][0][match.P1][0]
+                    match.P2_Arch = match_dict[match[0]][0][match.P2][0]
+                    match.P2_Subarch = match_dict[match[0]][0][match.P2][1]
+                    match.Format = match_dict[match[0]][2]
+                    match.Limited_Format = match_dict[match[0]][3]
+                    match.Match_Type = match_dict[match[0]][4]
                 # Found new Match for which we don't have user inputs.
                 except KeyError:
                     pass
@@ -2799,6 +2799,7 @@ def import_window():
     button5.grid(row=0,column=2,padx=5,pady=5)
 
     import_window.protocol("WM_DELETE_WINDOW", lambda : close_import_window())
+
 def get_winners():
     global ALL_DATA
     global ALL_DATA_INVERTED
@@ -2809,15 +2810,14 @@ def get_winners():
     changed = 0
     total = 0
     exit = False
-    hero_index = HEADERS["Drafts"].index("Hero")
     raw_dict_new = {}
-    for count,key in enumerate(ALL_DATA.raw_game_data):
+    for index,key in enumerate(ALL_DATA.raw_game_data):
         match_id = key.rsplit("-",1)[0]
         game_num = key.rsplit("-",1)[1]
         if not exit:
             for game in ALL_DATA.games:
                 if (game.Match_ID == match_id) & (str(game.Game_Num) == game_num) & (game.Game_Winner == "NA"):
-                    ask_for_winner(ALL_DATA.raw_game_data[key],game.P1,game.P2,count+1,len(ALL_DATA.raw_game_data))
+                    ask_for_winner(ALL_DATA.raw_game_data[key],game.P1,game.P2,index+1,len(ALL_DATA.raw_game_data))
                     total += 1
                     if user_entered_winner == "Exit.":
                         exit = True
@@ -2829,14 +2829,16 @@ def get_winners():
                         changed += 1
                     break
         if exit:
-            raw_dict_new[key] = ALL_DATA[3][key]
+            raw_dict_new[key] = ALL_DATA.raw_game_data[key]
 
     if len(ALL_DATA.raw_game_data) > len(raw_dict_new):
         ALL_DATA.raw_game_data = raw_dict_new
+        # only game wins got updated above, now need to apply to matches
         modo.update_game_wins(ALL_DATA,TIMEOUT)
         ALL_DATA_INVERTED = modo.invert_join(ALL_DATA)
 
         df_inverted = pd.DataFrame(ALL_DATA_INVERTED[0],columns=HEADERS["Matches"])
+        hero_index = HEADERS["Drafts"].index("Hero")
         for draft in DRAFTS_TABLE:
             wins = df_inverted[(df_inverted.Draft_ID == draft[0]) & (df_inverted.P1 == draft[hero_index]) & (df_inverted.Match_Winner == "P1")].shape[0]
             losses = df_inverted[(df_inverted.Draft_ID == draft[0]) & (df_inverted.P1 == draft[hero_index]) & (df_inverted.Match_Winner == "P2")].shape[0]
@@ -2846,7 +2848,7 @@ def get_winners():
         ask_to_save = True
 
     if not total:
-        update_status_bar(status=f"No Applicable Games found.")
+        update_status_bar(status="No Applicable Games found.")
     else:
         update_status_bar(status=f"Game_Winner updated for {changed} Game{'' if changed == 1 else 's'}.")
     set_display("Matches",update_status=False,reset=True)
@@ -3009,7 +3011,18 @@ def to_percent(fl,n):
     return str(round(fl*100,n)) + '%'
 
 def tag_even_colored(row: pd.Series) -> tuple:
+    """Function that returns tags for Treeview entries (see dataframe_into_tree)"""
     return tuple() if (row.name % 2) else ('colored',)
+
+def tree_setup(label_frame: tk.LabelFrame) -> ttk.Treeview:
+            tree = ttk.Treeview(label_frame,show="headings",selectmode="none",padding=10)
+            tree.place(relheight=1, relwidth=1)
+            tree.bind("<Button-1>",suppress_cursor)
+            tree.bind("<Enter>",suppress_cursor)
+            tree.bind("<ButtonRelease-1>",suppress_cursor)
+            tree.bind("<Motion>",suppress_cursor)
+            tree.tag_configure("colored",background="#cccccc")
+            return tree
 
 def get_stats():
     width = 1350
@@ -3164,20 +3177,10 @@ def get_stats():
                     deck,opp_deck,date_range, s_type):
         stats_window.title(f"Statistics - Match Data: {hero}")
         clear_frames()
-        def match_stats_tree_setup(label_frame: tk.LabelFrame):
-            tree = ttk.Treeview(label_frame,show="headings",
-                                selectmode="none",padding=10)
-            tree.place(relheight=1, relwidth=1)
-            tree.bind("<Button-1>",suppress_cursor)
-            tree.bind("<Enter>",suppress_cursor)
-            tree.bind("<ButtonRelease-1>",suppress_cursor)
-            tree.bind("<Motion>",suppress_cursor)
-            tree.tag_configure("colored",background="#cccccc")
-            return tree
-        tree1 = match_stats_tree_setup(mid_frame1)
-        tree2 = match_stats_tree_setup(mid_frame2)
-        tree3 = match_stats_tree_setup(mid_frame3)
-        tree4 = match_stats_tree_setup(mid_frame4)
+        tree1 = tree_setup(mid_frame1)
+        tree2 = tree_setup(mid_frame2)
+        tree3 = tree_setup(mid_frame3)
+        tree4 = tree_setup(mid_frame4)
         mid_frame.grid_rowconfigure(0,weight=1)
         mid_frame.grid_rowconfigure(1,weight=1)
         mid_frame.grid_columnconfigure(0,weight=1)
@@ -3281,15 +3284,6 @@ def get_stats():
     def game_stats(hero,opp,mformat,lformat,deck,opp_deck,date_range,s_type):
         stats_window.title("Statistics - Game Data: " + hero)
         clear_frames()
-        def tree_setup(label_frame: tk.LabelFrame) -> ttk.Treeview:
-            tree = ttk.Treeview(label_frame,show="headings",selectmode="none",padding=10)
-            tree.place(relheight=1, relwidth=1)
-            tree.bind("<Button-1>",suppress_cursor)
-            tree.bind("<Enter>",suppress_cursor)
-            tree.bind("<ButtonRelease-1>",suppress_cursor)
-            tree.bind("<Motion>",suppress_cursor)
-            tree.tag_configure("colored",background="#cccccc")
-            return tree
         tree1 = tree_setup(mid_frame1)
         tree2 = tree_setup(mid_frame2)
         tree3 = tree_setup(mid_frame3)
@@ -3352,23 +3346,10 @@ def get_stats():
     def play_stats(hero,opp,mformat,lformat,deck,opp_deck,date_range,s_type):
         stats_window.title("Statistics - Play Data: " + hero)
         clear_frames()
-        def tree_skip(event):
-            if tree1.identify_region(event.x,event.y) == "separator":
-                return "break"
-            if tree1.identify_region(event.x,event.y) == "heading":
-                return "break"
-        def tree_setup(*argv):
-            for i in argv:
-                i.place(relheight=1, relwidth=1)
-                i.bind("<Button-1>",tree_skip)
-                i.bind("<Enter>",tree_skip)
-                i.bind("<ButtonRelease-1>",tree_skip)
-                i.bind("<Motion>",tree_skip)            
-        tree1 = ttk.Treeview(mid_frame1,show="headings",selectmode="none",padding=10)
-        tree2 = ttk.Treeview(mid_frame2,show="headings",selectmode="none",padding=10)
-        tree3 = ttk.Treeview(mid_frame3,show="headings",selectmode="none",padding=10)       
-        tree4 = ttk.Treeview(mid_frame4,show="headings",selectmode="none",padding=10)
-        tree_setup(tree1,tree2,tree3,tree4)
+        tree1 = tree_setup(mid_frame1)
+        tree2 = tree_setup(mid_frame2)
+        tree3 = tree_setup(mid_frame3)
+        tree4 = tree_setup(mid_frame4)
         mid_frame.grid_rowconfigure(0,weight=1)
         mid_frame.grid_rowconfigure(1,weight=1)
         mid_frame.grid_columnconfigure(0,weight=1)
@@ -3378,59 +3359,51 @@ def get_stats():
         mid_frame3.grid(row=1,column=0,sticky="nsew")
         mid_frame4.grid(row=1,column=1,sticky="nsew")
 
-        df1_i_merge =   pd.merge(df_matches_inverted,
-                                 df_games_inverted,
-                                 how="inner",
-                                 left_on=["Match_ID","P1","P2"],
-                                 right_on=["Match_ID","P1","P2"])
-        df2_merge   =   pd.merge(df_matches,
-                                 df_plays,
-                                 how="inner",
-                                 left_on=["Match_ID"],
-                                 right_on=["Match_ID"])
-        df1_i_merge   = df1_i_merge[(df1_i_merge.Date > date_range[0]) & (df1_i_merge.Date < date_range[1])]
-        df2_merge     = df2_merge[(df2_merge.Date > date_range[0]) & (df2_merge.Date < date_range[1])]
-        if mformat != "All Formats":
-            df1_i_merge = df1_i_merge[(df1_i_merge.Format == mformat)]
-            df2_merge = df2_merge[(df2_merge.Format == mformat)]
-        if lformat != "All Limited Formats":
-            df1_i_merge = df1_i_merge[(df1_i_merge.Limited_Format == lformat)]
-            df2_merge = df2_merge[(df2_merge.Limited_Format == lformat)]
-        df2_hero      = df2_merge[(df2_merge.Casting_Player == hero)]
+        hero_matches = filter_df(df_matches_inverted, hero=hero)
+        df_matches_games = pd.merge(df_matches_inverted,
+                                df_games_inverted,
+                                how="inner",
+                                on=["Match_ID","P1","P2"])
+        df_matches_plays = pd.merge(hero_matches,
+                                df_plays,
+                                how="inner",
+                                on=["Match_ID"])
+        df_matches_games = filter_df(df_matches_games, date_range=date_range,
+                            format_filter=mformat, limited_format=lformat)
+        df_matches_plays = filter_df(df_matches_plays, date_range=date_range,
+                            format_filter=mformat, limited_format=lformat)
+        df2_hero = df_matches_plays[(df_matches_plays.Casting_Player == hero)]
         
-        formats_played = df2_hero.Format.value_counts().keys().tolist()
+        play_tag_factory = lambda row: () if (row.name//2) % 2 else ('colored',)
+        get_game_count = lambda mtg_format: filter_df(df_matches_games, hero=hero, format_filter=mtg_format).shape[0]
+        formats_played = sorted(df2_hero.Format.unique(), key=get_game_count,
+                                reverse=True)
         # the following line is a terrible fix for an issue with multiplayer
-        formats_played = [format for format in formats_played if df1_i_merge[(df1_i_merge.P1 == hero) & (df1_i_merge.Format == format)].shape[0]]
-        formats =    []
-        index_list = []
-        for i in formats_played:
-            hero_n_format = df1_i_merge[(df1_i_merge.P1 == hero) & (df1_i_merge.Format == i)].shape[0]
-            formats.append(i)
-            formats.append(str(hero_n_format) + " Games")
-            index_list.append("Total")
-            index_list.append("Per Game")
-        tree1_data = []
-        for i in formats_played:
-
-            hero_n_format = df1_i_merge[(df1_i_merge.P1 == hero) & (df1_i_merge.Format == i)].shape[0]
-            play_count =    df2_hero[(df2_hero.Format == i) & (df2_hero.Action == "Land Drop")].shape[0]
-            cast_count =    df2_hero[(df2_hero.Format == i) & (df2_hero.Action == "Casts")].shape[0]
-            act_count =     df2_hero[(df2_hero.Format == i) & (df2_hero.Action == "Activated Ability")].shape[0]
-            trig_count =    df2_hero[(df2_hero.Format == i) & (df2_hero.Action == "Triggers")].shape[0]
-            attack_count =  df2_hero[(df2_hero.Format == i) & (df2_hero.Action == "Attacks")].Attackers.sum()
-            draw_count =    df2_hero[(df2_hero.Format == i) & (df2_hero.Action == "Draws")].Cards_Drawn.sum()
-            tree1_data.append([play_count,
-                            cast_count,
-                            act_count,
-                            trig_count,
-                            attack_count,
-                            draw_count])
-            tree1_data.append([round(play_count/hero_n_format,1),
-                            round(cast_count/hero_n_format,1),
-                            round(act_count/hero_n_format,1),
-                            round(trig_count/hero_n_format,1),
-                            round(attack_count/hero_n_format,1),
-                            round(draw_count/hero_n_format,1)])
+        # the bug occurs when making plays in a game where you're neither P1 nor P2
+        formats_played = [format for format in formats_played if df_matches_games[(df_matches_games.P1 == hero) & (df_matches_games.Format == format)].shape[0]]
+        formats = []
+        play_stats_columns = ['Segment', '', 'Land Drop', 'Casts', 'Activates',
+                            'Triggers', 'Attacks', 'Draws']
+        display_df = pd.DataFrame(columns=play_stats_columns)
+        def count_action(df: pd.DataFrame, action: str, game_count: int, segment: str):
+            if segment == 'Total':
+                return df[df.Action == action].shape[0]
+            else:
+                return round(df[df.Action == action].shape[0] / game_count, 1)
+        for index, (mtg_format, segment) in enumerate(itertools.product(formats_played, ('Total', 'Per Game'))):
+            game_count = df_matches_games[(df_matches_games.P1 == hero) & (df_matches_games.Format == mtg_format)].shape[0]
+            filtered_play_df = filter_df(df2_hero, format_filter=mtg_format)
+            display_df.loc[index] = [
+                mtg_format if segment == 'Total' else f'{game_count} Games', segment, 
+                count_action(filtered_play_df, 'Land Drop', game_count, segment),
+                count_action(filtered_play_df, 'Casts', game_count, segment),
+                count_action(filtered_play_df, 'Activated Ability', game_count, segment),
+                count_action(filtered_play_df, 'Triggers', game_count, segment),
+                count_action(filtered_play_df, 'Attacks', game_count, segment),
+                count_action(filtered_play_df, 'Draws', game_count, segment)]
+        dataframe_into_tree(tree1, display_df,tag_factory=play_tag_factory)
+        if display_df.empty:
+            tree1.insert("","end",values=["No Games Found."],tags=('colored',))
 
 
         df_tree2 = df2_hero
@@ -3455,109 +3428,48 @@ def get_stats():
                                total_actions])
             index_list2.append(["Turn "+str(i)])
 
-        df2_i_merge = pd.merge(df_matches_inverted,
-                               df_plays,
-                               how="inner",
-                               left_on=["Match_ID"],
-                               right_on=["Match_ID"])
-        df2_i_merge =  df2_i_merge[(df2_i_merge.Date > date_range[0]) & (df2_i_merge.Date < date_range[1])]
-        if mformat != "All Formats":
-            df2_i_merge = df2_i_merge[(df2_i_merge.Format == mformat)]
-        if lformat != "All Limited Formats":
-            df2_i_merge = df2_i_merge[(df2_i_merge.Limited_Format == lformat)]
-        df2_i_m_hero = df2_i_merge[(df2_i_merge.P1 == hero)]
-   
-        decks3 =        []
-        index_list3 =   []
-        tree3_data =    []
-        df_tree3 = df2_i_m_hero[(df2_i_m_hero.Casting_Player == hero)]
-        if deck != "All Decks":
-            df_tree3 = df_tree3[(df_tree3.P1_Subarch == deck)]
-        hero_decks =    df_tree3.P1_Subarch.value_counts().keys().tolist()
-        hero_decks_n =  []
-        for i in hero_decks:
-            games_played = df1_i_merge[(df1_i_merge.P1 == hero) & (df1_i_merge.P1_Subarch == i)].shape[0]
-            hero_decks_n.append(games_played)
-            index_list3.append("Total")
-            index_list3.append("Per Game")
-        tuples = zip(*sorted(zip(hero_decks_n,hero_decks),reverse=True))
-        if len(hero_decks_n) > 1:
-            hero_decks_n, hero_decks = [list(tuple) for tuple in tuples]
-        for i in range(len(hero_decks)):
-            decks3.append(hero_decks[i])
-            decks3.append(str(hero_decks_n[i])+" Games")
-        for i in hero_decks:
-            if mformat != "All Formats":
-                games_played = df1_i_merge[(df1_i_merge.P1 == hero) & (df1_i_merge.Format == mformat) & (df1_i_merge.P1_Subarch == i)].shape[0]
-            else:
-                games_played = df1_i_merge[(df1_i_merge.P1 == hero) & (df1_i_merge.P1_Subarch == i)].shape[0]
-            play_count = df_tree3[(df_tree3.P1_Subarch == i) & (df_tree3.Action == "Land Drop")].shape[0]
-            cast_count = df_tree3[(df_tree3.P1_Subarch == i) & (df_tree3.Action == "Casts")].shape[0]
-            act_count = df_tree3[(df_tree3.P1_Subarch == i) & (df_tree3.Action == "Activated Ability")].shape[0]
-            trig_count = df_tree3[(df_tree3.P1_Subarch == i) & (df_tree3.Action == "Triggers")].shape[0]
-            attack_count = df_tree3[(df_tree3.P1_Subarch == i) & (df_tree3.Action == "Attacks")].Attackers.sum()
-            draw_count = df_tree3[(df_tree3.P1_Subarch == i) & (df_tree3.Action == "Draws")].Cards_Drawn.sum()
-            tree3_data.append([play_count,
-                               cast_count,
-                               act_count,
-                               trig_count,
-                               attack_count,
-                               draw_count])
-            if games_played == 0:
-                tree3_data.append([0.0,0.0,0.0,0.0,0.0,0.0])
-            else:
-                tree3_data.append([round(play_count/games_played,1),
-                                   round(cast_count/games_played,1),
-                                   round(act_count/games_played,1),
-                                   round(trig_count/games_played,1),
-                                   round(attack_count/games_played,1),
-                                   round(draw_count/games_played,1)])
-        
-        decks4 = []
-        index_list4 = []
-        tree4_data = []
-        df_tree4 = df2_i_m_hero[(df2_i_m_hero.Casting_Player != hero)]
-        if opp_deck != "All Opp. Decks":
-            df_tree4 = df_tree4[(df_tree4.P2_Subarch == opp_deck)]
-        opp_decks = df_tree4.P2_Subarch.value_counts().keys().tolist()
-        opp_decks_n = []
-        for i in opp_decks:
-            games_played = df1_i_merge[(df1_i_merge.P1 == hero) & (df1_i_merge.P2_Subarch == i)].shape[0]
-            opp_decks_n.append(games_played)
-            index_list4.append("Total")
-            index_list4.append("Per Game")
-        tuples = zip(*sorted(zip(opp_decks_n,opp_decks),reverse=True))
-        if len(opp_decks_n) > 1:
-            opp_decks_n, opp_decks = [list(tuple) for tuple in tuples]        
-        for i in range(len(opp_decks)):
-            decks4.append(opp_decks[i])
-            decks4.append(str(opp_decks_n[i])+" Games")
-        for i in opp_decks:
-            if mformat != "All Formats":
-                games_played = df1_i_merge[(df1_i_merge.P1 == hero) & (df1_i_merge.Format == mformat) & (df1_i_merge.P2_Subarch == i)].shape[0]
-            else:
-                games_played = df1_i_merge[(df1_i_merge.P1 == hero) & (df1_i_merge.P2_Subarch == i)].shape[0]
-            play_count = df_tree4[(df_tree4.P2_Subarch == i) & (df_tree4.Action == "Land Drop")].shape[0]
-            cast_count = df_tree4[(df_tree4.P2_Subarch == i) & (df_tree4.Action == "Casts")].shape[0]
-            act_count = df_tree4[(df_tree4.P2_Subarch == i) & (df_tree4.Action == "Activated Ability")].shape[0]
-            trig_count = df_tree4[(df_tree4.P2_Subarch == i) & (df_tree4.Action == "Triggers")].shape[0]
-            attack_count = df_tree4[(df_tree4.P2_Subarch == i) & (df_tree4.Action == "Attacks")].Attackers.sum()
-            draw_count = df_tree4[(df_tree4.P2_Subarch == i) & (df_tree4.Action == "Draws")].Cards_Drawn.sum()
-            tree4_data.append([play_count,
-                               cast_count,
-                               act_count,
-                               trig_count,
-                               attack_count,
-                               draw_count])
-            if games_played == 0:
-                tree4_data.append([0.0,0.0,0.0,0.0,0.0,0.0])
-            else:
-                tree4_data.append([round(play_count/games_played,1),
-                                   round(cast_count/games_played,1),
-                                   round(act_count/games_played,1),
-                                   round(trig_count/games_played,1),
-                                   round(attack_count/games_played,1),
-                                   round(draw_count/games_played,1)])
+        display_df = pd.DataFrame(columns=play_stats_columns)
+        filtered_df = filter_df(df2_hero, format_filter=mformat, deck=deck)
+        get_game_count = lambda deck: filter_df(df_matches_games, hero=hero, deck=deck).shape[0]
+        decks_played = sorted(filtered_df.P1_Subarch.unique(), 
+                            key=get_game_count, reverse=True)
+        for index, (own_deck, segment) in enumerate(itertools.product(decks_played, ('Total', 'Per Game'))):
+            game_count = get_game_count(own_deck)
+            filtered_play_df = filter_df(df2_hero, deck=own_deck)
+            display_df.loc[index] = [
+                own_deck if segment == 'Total' else f'{game_count} Games', segment, 
+                count_action(filtered_play_df, 'Land Drop', game_count, segment),
+                count_action(filtered_play_df, 'Casts', game_count, segment),
+                count_action(filtered_play_df, 'Activated Ability', game_count, segment),
+                count_action(filtered_play_df, 'Triggers', game_count, segment),
+                count_action(filtered_play_df, 'Attacks', game_count, segment),
+                count_action(filtered_play_df, 'Draws', game_count, segment)]
+        dataframe_into_tree(tree3, display_df,tag_factory=play_tag_factory)
+        if display_df.empty:
+            tree3.insert("","end",values=["No Games Found."],tags=('colored',))
+
+
+        display_df = pd.DataFrame(columns=play_stats_columns)
+        opp_play_df = df_matches_plays[df_matches_plays.Casting_Player != hero]
+        filtered_df = filter_df(opp_play_df, format_filter=mformat, opp_deck=opp_deck)
+        get_game_count = lambda deck: filter_df(df_matches_games, hero=hero, opp_deck=deck).shape[0]
+        opp_decks_played = sorted(filtered_df.P2_Subarch.unique(),
+                                    key=get_game_count, reverse=True)
+        for index, (enemy_deck, segment) in enumerate(itertools.product(opp_decks_played, ('Total', 'Per Game'))):
+            game_count = get_game_count(enemy_deck)
+            filtered_play_df = filter_df(df2_hero, opp_deck=enemy_deck)
+            display_df.loc[index] = [
+                enemy_deck if segment == 'Total' else f'{game_count} games', 
+                segment,
+                count_action(filtered_play_df, 'Land Drop', game_count, segment),
+                count_action(filtered_play_df, 'Casts', game_count, segment),
+                count_action(filtered_play_df, 'Activated Ability', game_count, segment),
+                count_action(filtered_play_df, 'Triggers', game_count, segment),
+                count_action(filtered_play_df, 'Attacks', game_count, segment),
+                count_action(filtered_play_df, 'Draws', game_count, segment)]
+        dataframe_into_tree(tree4, display_df,tag_factory=play_tag_factory)
+        if display_df.empty:
+            tree4.insert("","end",values=["No Games Found."],tags=('colored',))
 
         frame_labels = ["Play Data By Format",
                         "Play Data By Turn: " + hero + ", " + mformat,
@@ -3570,29 +3482,6 @@ def get_stats():
             frame_labels[3] = "Opposing Play Data: " + mformat + " - " + lformat + ", " + deck
 
         mid_frame1["text"] = frame_labels[0]
-        tree1.tag_configure("colored",background="#cccccc")   
-        tree1.delete(*tree1.get_children())
-        tree1["column"] = ["","","Land Drop","Casts","Activates","Triggers","Attacks","Draws"]
-        for i in tree1["column"]:
-            tree1.column(i,minwidth=25,stretch=True,width=25)
-            tree1.heading(i,text=i)
-        tree1.column(0,minwidth=110,stretch=False,width=110)
-        for i in range(len(tree1["column"])):
-            tree1.column(i,anchor="center")
-        tagged = True
-        count = 0
-        if len(formats) == 0:
-            tree1.insert("","end",values=["No Games Found."],tags=('colored',))
-        for i in range(len(formats)):
-            if tagged == True:
-                tree1.insert("","end",values=[formats[i]]+[index_list[i]]+tree1_data[i],tags=('colored',))
-            else:
-                tree1.insert("","end",values=[formats[i]]+[index_list[i]]+tree1_data[i])
-            count += 1
-            if count == 2:
-                tagged = not tagged
-                count = 0
-                
         mid_frame2["text"] = frame_labels[1]
         tree2.tag_configure("colored",background="#cccccc")   
         tree2.delete(*tree2.get_children())
@@ -3613,57 +3502,8 @@ def get_stats():
                 tree2.insert("","end",values=index_list2[i]+tree2_data[i])
             tagged = not tagged
 
-        mid_frame3["text"] = frame_labels[2]               
-        tree3.tag_configure("colored",background="#cccccc")
-        tree3.delete(*tree3.get_children())
-        tree3["column"] = ["","","Land Drop","Casts","Activates","Triggers","Attacks","Draws"]
-        for i in tree3["column"]:
-            tree3.column(i,minwidth=25,stretch=True,width=25)
-            tree3.heading(i,text=i)
-        tree3.column(0,minwidth=110,stretch=False,width=110)
-        for i in range(len(tree3["column"])):
-            tree3.column(i,anchor="center")
-        tagged = True
-        count = 0
-        if len(decks3) == 0:
-            tree3.insert("","end",values=["No Games Found."],tags=('colored',))
-        for i in range(len(decks3)):
-            if i > 13:
-                break
-            if tagged == True:
-                tree3.insert("","end",values=[decks3[i]]+[index_list3[i]]+tree3_data[i],tags=('colored',))
-            else:
-                tree3.insert("","end",values=[decks3[i]]+[index_list3[i]]+tree3_data[i])
-            count += 1
-            if count == 2:
-                tagged = not tagged
-                count = 0
-
-        mid_frame4["text"] = frame_labels[3]                
-        tree4.tag_configure("colored",background="#cccccc")
-        tree4.delete(*tree4.get_children())
-        tree4["column"] = ["","","Land Drop","Casts","Activates","Triggers","Attacks","Draws"]
-        for i in tree4["column"]:
-            tree4.column(i,minwidth=25,stretch=True,width=25)
-            tree4.heading(i,text=i)
-        tree4.column(0,minwidth=110,stretch=False,width=110)
-        for i in range(len(tree4["column"])):
-            tree4.column(i,anchor="center")
-        tagged = True
-        count = 0
-        if len(decks4) == 0:
-            tree4.insert("","end",values=["No Games Found."],tags=('colored',))
-        for i in range(len(decks4)):
-            if i > 13:
-                break
-            if tagged == True:
-                tree4.insert("","end",values=[decks4[i]]+[index_list4[i]]+tree4_data[i],tags=('colored',))
-            else:
-                tree4.insert("","end",values=[decks4[i]]+[index_list4[i]]+tree4_data[i])
-            count += 1
-            if count == 2:
-                tagged = not tagged
-                count = 0
+        mid_frame3["text"] = frame_labels[2]
+        mid_frame4["text"] = frame_labels[3]
     
     def opp_stats(hero,opp,mformat,lformat,deck,opp_deck,date_range,s_type):
         stats_window.title("Statistics - Opponent Data: " + hero + " vs. " + opp)
@@ -3674,10 +3514,10 @@ def get_stats():
                 i.bind("<Button-1>",suppress_cursor)
                 i.bind("<Enter>",suppress_cursor)
                 i.bind("<ButtonRelease-1>",suppress_cursor)
-                i.bind("<Motion>",suppress_cursor)          
+                i.bind("<Motion>",suppress_cursor)
         tree1 = ttk.Treeview(mid_frame1,show="headings",selectmode="none",padding=10)
         tree2 = ttk.Treeview(mid_frame2,show="headings",selectmode="none",padding=10)
-        tree3 = ttk.Treeview(mid_frame3,show="headings",selectmode="none",padding=10)       
+        tree3 = ttk.Treeview(mid_frame3,show="headings",selectmode="none",padding=10)
         tree4 = ttk.Treeview(mid_frame4,show="headings",selectmode="none",padding=10)
         tree_setup(tree1,tree2,tree3,tree4)
         mid_frame.grid_rowconfigure(0,weight=1)
@@ -4397,7 +4237,7 @@ def get_stats():
     limited_options = [""]
     decks_played = [""]
     opp_decks_played = [""]
-    # stat_types = ["Match History","Match Stats","Game Stats","Play Stats","Opponent Stats","Time Data","Card Data"]
+    #stat_types = ["Match History","Match Stats","Game Stats","Play Stats","Opponent Stats","Time Data","Card Data"]
     stat_types = ["Match History","Match Stats","Game Stats","Play Stats","Opponent Stats","Card Data"]
     
     player = tk.StringVar()
@@ -4519,7 +4359,7 @@ def remove_record(ignore):
     for i in selected:
         sel_matchid.append(list(tree1.item(i,"values"))[0])
 
-    # Remove records from our table data and get table size differences.
+    # Remove records from table data and get table size differences.
     if display == "Matches":
         precounts = [len(ALL_DATA[0]),len(ALL_DATA[1]),len(ALL_DATA[2])]
         ALL_DATA[0] = [i for i in ALL_DATA[0] if i[0] not in sel_matchid]
@@ -4535,7 +4375,7 @@ def remove_record(ignore):
         PICKS_TABLE = [i for i in PICKS_TABLE if i[0] not in sel_matchid]
         counts = [precounts[0]-len(DRAFTS_TABLE),precounts[1]-len(PICKS_TABLE)]
 
-    # Remove GameLog filename from our list of previously parsed files.
+    # Remove GameLog filename from list of previously parsed files.
     if not ignore:
         if display == "Matches":
             for i in sel_matchid:
@@ -4612,37 +4452,26 @@ def remove_select():
     button_close.grid(row=0,column=2,padx=5,pady=5)
     
     remove_select.protocol("WM_DELETE_WINDOW", lambda : close_window())
+
 def user_inputs(type):
     match_dict = {}
     game_dict = {}
     player_dict = {}
 
-    draftid_index = HEADERS["Matches"].index("Draft_ID")
-    p1_index = HEADERS["Matches"].index("P1")
-    p2_index = HEADERS["Matches"].index("P2")
-    p1_arch_index = HEADERS["Matches"].index("P1_Arch")
-    p2_arch_index = HEADERS["Matches"].index("P2_Arch")
-    p1_sub_index = HEADERS["Matches"].index("P1_Subarch")
-    p2_sub_index = HEADERS["Matches"].index("P2_Subarch")
-    format_index = HEADERS["Matches"].index("Format")
-    lformat_index = HEADERS["Matches"].index("Limited_Format")
-    match_type_index = HEADERS["Matches"].index("Match_Type")
-
-    gn_index = HEADERS["Games"].index("Game_Num")
-    gw_index = HEADERS["Games"].index("Game_Winner")
-
     if type == "Matches":
-        for i in ALL_DATA[0]:
+        for match in ALL_DATA.matches:
             player_dict = {}
-            player_dict[i[p1_index]] = [i[p1_arch_index],i[p1_sub_index]]
-            player_dict[i[p2_index]] = [i[p2_arch_index],i[p2_sub_index]]
-            match_dict[i[0]] = [player_dict,i[draftid_index],i[format_index],i[lformat_index],i[match_type_index]]
+            player_dict[match.P1] = [match.P1_Arch, match.P1_Subarch]
+            player_dict[match.P2] = [match.P2_Arch, match.P2_Subarch]
+            match_dict[match.Match_ID] = [player_dict, match.Draft_ID, 
+                match.Format, match.Limited_Format, match.Match_Type]
         return match_dict
     elif type == "Games":
-        for i in ALL_DATA[1]:
-            key = f"{i[0]}-{i[gn_index]}"
-            game_dict[key] = [i[HEADERS["Games"].index("P1")],i[HEADERS["Games"].index("P2")],i[gw_index]]
+        for game in ALL_DATA.games:
+            key = f"{game[0]}-{game.Game_Num}"
+            game_dict[key] = [game.P1, game.P2, game.Game_Winner]
         return game_dict
+
 def get_associated_draftid(mode):
     global ALL_DATA
     global ALL_DATA_INVERTED
@@ -4721,6 +4550,7 @@ def get_associated_draftid(mode):
         set_display("Matches",update_status=False,reset=True)
     else:
         update_status_bar(f"No Matches with Applicable Draft_IDs found.")
+
 def get_associated_draftid_pre():
     height = 115
     width =  315
@@ -4766,6 +4596,7 @@ def get_associated_draftid_pre():
     button_close.grid(row=0,column=2,padx=5,pady=5)
     
     sub_window.protocol("WM_DELETE_WINDOW", lambda : close_sub_window())
+
 def associated_draftid_window(list_to_process,index,total):
     def close_format_window(*argv):
         global missing_data
