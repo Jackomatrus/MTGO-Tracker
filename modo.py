@@ -89,7 +89,7 @@ def update_game_wins(
         timeout (dict[str, str]): Mapping of match_id to the player name that timed out.
     """
 
-    for match in all_data[0]: # Iterate through Matches.
+    for match in all_data.matches: # Iterate through Matches.
         match.P1_Wins = 0
         match.P2_Wins = 0
         match.Match_Winner = "NA"

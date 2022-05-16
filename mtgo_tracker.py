@@ -527,9 +527,9 @@ def set_display(d: str, update_status: bool, reset: bool, start_index: int=0
     text_frame.config(text=display)
     
     # disable buttons for MATCHES, GAMES, PLAYS, DRAFTS, and PICKS if unavailable
-    button_state = tk.NORMAL if len(ALL_DATA[0]) > 0 else tk.DISABLED
+    button_state = tk.NORMAL if ALL_DATA.matches else tk.DISABLED
     match_button["state"] = game_button["state"] = play_button["state"] = button_state
-    button_state = tk.NORMAL if len(DRAFTS_TABLE) > 0 else tk.DISABLED
+    button_state = tk.NORMAL if DRAFTS_TABLE else tk.DISABLED
     draft_button["state"] = pick_button["state"] = button_state
 
     if d == "Matches":
@@ -2135,12 +2135,8 @@ def revise_record():
     
     revise_window.grid_columnconfigure(0,weight=1)
     revise_window.rowconfigure(0,minsize=0,weight=1)  
-    mid_frame.grid_columnconfigure(0,weight=1)
-    mid_frame.grid_columnconfigure(1,weight=1)
-    mid_frame.grid_columnconfigure(2,weight=1)
-    mid_frame.grid_columnconfigure(3,weight=1)
-    mid_frame.grid_columnconfigure(4,weight=1)
-    mid_frame.grid_columnconfigure(5,weight=1)
+    for i in range(6):
+        mid_frame.grid_columnconfigure(i,weight=1)
 
     def update_arch(*argv):
         menu = match_type_entry["menu"]
@@ -2210,21 +2206,21 @@ def revise_record():
 
     def close_revise_window():
         global ALL_DATA_INVERTED
-        for count,i in enumerate(ALL_DATA[0]):
-            if i[0] == values[0]:
-                if i[HEADERS["Matches"].index("P1")] == values[HEADERS["Matches"].index("P1")]:
-                    i[HEADERS["Matches"].index("P1_Arch")] = p1_arch_type.get()
-                    i[HEADERS["Matches"].index("P1_Subarch")] = p1_subarch_entry.get()
-                    i[HEADERS["Matches"].index("P2_Arch")] = p2_arch_type.get()
-                    i[HEADERS["Matches"].index("P2_Subarch")] = p2_subarch_entry.get()
+        for count,match in enumerate(ALL_DATA.matches):
+            if match[0] == values[0]:
+                if match.P1 == values[HEADERS["Matches"].index("P1")]:
+                    match.P1_Arch = p1_arch_type.get()
+                    match.P1_Subarch = p1_subarch_entry.get()
+                    match.P2_Arch = p2_arch_type.get()
+                    match.P2_Subarch = p2_subarch_entry.get()
                 else:
-                    i[HEADERS["Matches"].index("P1_Arch")] = p2_arch_type.get()
-                    i[HEADERS["Matches"].index("P1_Subarch")] = p2_subarch_entry.get()
-                    i[HEADERS["Matches"].index("P2_Arch")] = p1_arch_type.get()
-                    i[HEADERS["Matches"].index("P2_Subarch")] = p1_subarch_entry.get()
-                i[HEADERS["Matches"].index("Format")] = match_format.get()
-                i[HEADERS["Matches"].index("Limited_Format")] = limited_format.get()
-                i[HEADERS["Matches"].index("Match_Type")] = match_type.get()                   
+                    match.P1_Arch = p2_arch_type.get()
+                    match.P1_Subarch = p2_subarch_entry.get()
+                    match.P2_Arch = p1_arch_type.get()
+                    match.P2_Subarch = p1_subarch_entry.get()
+                match.Format = match_format.get()
+                match.Limited_Format = limited_format.get()
+                match.Match_Type = match_type.get()                   
                 ALL_DATA_INVERTED = modo.invert_join(ALL_DATA)
                 set_display("Matches",update_status=True,reset=True)
                 break
@@ -3529,14 +3525,14 @@ def get_stats():
         mid_frame3.grid(row=1,column=0,sticky="nsew")
         mid_frame4.grid(row=1,column=1,sticky="nsew")
 
-        df0_i_f        = df_matches_inverted[(df_matches_inverted.P1 == hero) & (df_matches_inverted.P2 == opp)]
+        df0_i_f = df_matches_inverted[(df_matches_inverted.P1 == hero) & (df_matches_inverted.P2 == opp)]
         df0_i_f.sort_values(by="Date",ascending=False,inplace=True)
-        tree1_dates    = df0_i_f.Date.tolist()
-        tree1_decks    = df0_i_f.P1_Subarch.tolist()
+        tree1_dates = df0_i_f.Date.tolist()
+        tree1_decks = df0_i_f.P1_Subarch.tolist()
         tree1_oppdecks = df0_i_f.P2_Subarch.tolist()
-        tree1_wins     = df0_i_f.P1_Wins.tolist()
-        tree1_losses   = df0_i_f.P2_Wins.tolist()
-        tree1_result   = df0_i_f.Match_Winner.tolist()
+        tree1_wins = df0_i_f.P1_Wins.tolist()
+        tree1_losses = df0_i_f.P2_Wins.tolist()
+        tree1_result = df0_i_f.Match_Winner.tolist()
         for index,i in enumerate(tree1_result):
             if i == "P1":
                 tree1_result[index] = "Win "
